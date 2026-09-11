@@ -1,8 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
+
+interface TxDataArgs {
+  data: Record<string, unknown>;
+}
 
 describe('API Routes — Posts (Unified Gateway)', () => {
   const app = buildApp();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it('POST /v1/posts returns 401 when unauthenticated', async () => {
     const res = await app.inject({
@@ -114,29 +122,29 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       contentVariant: {
         create: vi
           .fn()
-          .mockImplementation((args) =>
-            Promise.resolve({ id: `variant-${args.data.socialAccountId}`, ...args.data })
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `variant-${args.data.socialAccountId as string}`, ...args.data })
           ),
       },
       publication: {
         create: vi
           .fn()
-          .mockImplementation((args) =>
-            Promise.resolve({ id: `pub-${args.data.socialAccountId}`, ...args.data })
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `pub-${args.data.socialAccountId as string}`, ...args.data })
           ),
       },
       publishAttempt: {
         create: vi
           .fn()
-          .mockImplementation((args) =>
-            Promise.resolve({ id: `att-${args.data.publicationId}`, ...args.data })
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `att-${args.data.publicationId as string}`, ...args.data })
           ),
       },
       outboxCommand: {
         create: vi
           .fn()
-          .mockImplementation((args) =>
-            Promise.resolve({ id: `outbox-${args.data.publicationId}`, ...args.data })
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `outbox-${args.data.publicationId as string}`, ...args.data })
           ),
       },
     };
@@ -267,22 +275,30 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       contentVariant: {
         create: vi
           .fn()
-          .mockImplementation((args) => Promise.resolve({ id: `variant-imm`, ...args.data })),
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `variant-imm`, ...args.data })
+          ),
       },
       publication: {
         create: vi
           .fn()
-          .mockImplementation((args) => Promise.resolve({ id: `pub-imm`, ...args.data })),
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `pub-imm`, ...args.data })
+          ),
       },
       publishAttempt: {
         create: vi
           .fn()
-          .mockImplementation((args) => Promise.resolve({ id: `att-imm`, ...args.data })),
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `att-imm`, ...args.data })
+          ),
       },
       outboxCommand: {
         create: vi
           .fn()
-          .mockImplementation((args) => Promise.resolve({ id: `outbox-imm`, ...args.data })),
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `outbox-imm`, ...args.data })
+          ),
       },
     };
 
