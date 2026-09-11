@@ -79,9 +79,13 @@ export interface TelegramDbContext {
   listAccounts: () => Promise<Array<{ platform: string; name: string; status: string }>>;
   createPost: (params: {
     text: string;
-    mediaUrls?: string[];
-  }) => Promise<{ publicationCount: number; externalUrls?: string[] }>;
+    mediaUrls?: string[] | undefined;
+  }) => Promise<{ publicationCount: number; externalUrls?: string[] | undefined }>;
   handleApprovalDecision: (token: string, decision: 'APPROVED' | 'REJECTED') => Promise<boolean>;
+  handleAccountConnection?: (
+    token: string,
+    user: { id: number; username?: string | undefined; firstName?: string | undefined }
+  ) => Promise<{ success: boolean; workspaceName?: string | undefined }>;
 }
 
 export class TelegramBotService {
@@ -98,6 +102,21 @@ export class TelegramBotService {
     }
     this.baseUrl = `https://api.telegram.org/bot${config.botToken}`;
     this.adminChatId = config.adminChatId ? String(config.adminChatId) : undefined;
+  }
+
+  /**
+   * Get direct download URL for a file stored on Telegram servers.
+   */
+  public async getFileUrl(fileId: string): Promise<string | null> {
+    try {
+      const res = await axios.post(`${this.baseUrl}/getFile`, { file_id: fileId });
+      const filePath = res.data?.result?.file_path;
+      if (!filePath) return null;
+      return `https://api.telegram.org/file/bot${this.config.botToken}/${filePath}`;
+    } catch (err: unknown) {
+      console.error('TelegramBotService.getFileUrl failed:', err);
+      return null;
+    }
   }
 
   /**
@@ -313,6 +332,25 @@ export class TelegramBotService {
 
       if (!senderId) return { handled: false };
 
+      // 1-Click Deep-Link Account Connection: /start connect_<token> or /start link_<token>
+      if (text.startsWith('/start connect_') || text.startsWith('/start link_')) {
+        const token = text.replace(/^\/start\s+/, '').trim();
+        if (context?.handleAccountConnection) {
+          const res = await context.handleAccountConnection(token, {
+            id: senderId,
+            username: msg.from?.username,
+            firstName: msg.from?.first_name,
+          });
+          if (res.success) {
+            await this.sendMessage(
+              chatId,
+              `🎉 <b>تم ربط حسابك بنجاح كمدير للنظام!</b>\n\nأهلاً بك <b>${msg.from?.first_name || ''}</b> (@${msg.from?.username || senderId}).\nتم تفعيل صلاحيات التحكم والاعتماد لمساحة العمل <b>${res.workspaceName ?? 'Scriora HQ'}</b> بنجاح 🛡️\n\nيمكنك الآن استلام بطاقات الاعتماد التفاعلية، أو كتابة <code>/status</code> لاستعراض صحة النظام.`
+            );
+            return { handled: true, action: 'account_connected' };
+          }
+        }
+      }
+
       // Zero-Trust Security Check
       if (!this.isAuthorized(senderId)) {
         await this.sendMessage(
@@ -408,6 +446,32 @@ export class TelegramBotService {
           `✅ <b>تم النشر بنجاح!</b> 🚀\n\nتم إرسال المنشور إلى <b>${result.publicationCount}</b> وجهات بنجاح عبر مسار الـ Transactional Outbox.`
         );
         return { handled: true, action: 'post_created' };
+      }
+
+      // Direct Photo Broadcast: When the admin sends a photo from gallery with or without caption
+      if (msg.photo && msg.photo.length > 0) {
+        const largestPhoto = msg.photo[msg.photo.length - 1];
+        if (largestPhoto) {
+          const photoUrl = await this.getFileUrl(largestPhoto.file_id);
+          const caption = (msg.caption || msg.text || '').replace(/^\/post\s*/, '').trim();
+
+          if (!context?.createPost) {
+            await this.sendMessage(chatId, `⚠️ محرك النشر غير مهيأ حالياً.`);
+            return { handled: true, action: 'photo_failed' };
+          }
+
+          await this.sendMessage(chatId, `⏳ <i>جاري معالجة الصورة ونشرها على الوجهات المتصلة...</i>`);
+          const result = await context.createPost({
+            text: caption,
+            mediaUrls: photoUrl ? [photoUrl] : undefined,
+          });
+
+          await this.sendMessage(
+            chatId,
+            `✅ <b>تم استلام ونشر الصورة بنجاح!</b> 🚀\n\nتم إرسال المنشور مع الصورة إلى <b>${result.publicationCount}</b> وجهات بنجاح.`
+          );
+          return { handled: true, action: 'photo_post_created' };
+        }
       }
     }
 

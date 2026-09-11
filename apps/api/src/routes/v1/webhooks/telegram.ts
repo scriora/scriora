@@ -56,7 +56,7 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
       }));
     },
 
-    createPost: async (params: { text: string; mediaUrls?: string[] }) => {
+    createPost: async (params: { text: string; mediaUrls?: string[] | undefined }) => {
       const workspace = await prisma.workspace.findFirst({
         orderBy: { createdAt: 'asc' },
         include: { members: { take: 1 } },

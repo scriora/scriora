@@ -99,15 +99,20 @@ Scriora supports direct publishing across all chat and channel topologies withou
 
 ---
 
-### 3. Admin User ID (C2 & Governance Whitelist) 🛡️
+### 3. Admin User ID & 1-Click Zero-Manual-Input Linking 🛡️
 * **Definition:** The numeric Telegram User ID belonging to the executive administrator.
 * **Security Function (Zero-Trust Whitelist):**
   * Restricts delivery of interactive Human Governance approval cards (§14).
   * Exclusively authorizes C2 management commands (`/status`, `/accounts`, `/post`), blocking all unauthorized senders.
-* **Instant Discovery (5 Seconds):**
-  * Open the official [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) on Telegram and send `/start`.
-  * The bot outputs your numerical User ID instantly (e.g. `Id: 987654321`).
-* **Storage:** Configured in `TELEGRAM_ADMIN_CHAT_ID` or workspace settings.
+* **Seamless 1-Click Connection (No Manual ID Input Needed):**
+  1. In the Scriora Web Dashboard, click **[ 🔗 Connect Telegram with 1-Click ]** or scan the on-screen QR Code.
+  2. The browser launches: `https://t.me/your_bot?start=connect_<nonce_token>`.
+  3. The user simply taps **Start** in Telegram.
+  4. Telegram automatically dispatches `{ "from": { "id": 987654321, "username": "YourTelegramHandle" } }` to the bot.
+  5. Scriora captures the ID instantly, associates the administrator with the workspace, and turns on C2 governance in under 500 milliseconds—**zero manual typing required**.
+* **Manual Discovery Fallback (Optional):**
+  * For headless or CLI deployments, the user can obtain their numerical ID in 5 seconds via [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot).
+* **Storage:** Encrypted in `secret_envelopes` and registered in workspace settings.
 
 ---
 

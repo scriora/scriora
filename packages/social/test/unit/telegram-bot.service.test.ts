@@ -251,4 +251,82 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
       })
     );
   });
+
+  it('handles 1-click deep-link account connection via /start connect_<token>', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: { ok: true, result: { message_id: 302 } } });
+
+    const mockContext = {
+      getSystemStatus: vi.fn(),
+      listAccounts: vi.fn(),
+      createPost: vi.fn(),
+      handleApprovalDecision: vi.fn(),
+      handleAccountConnection: vi.fn().mockResolvedValue({ success: true, workspaceName: 'Scriora Enterprise' }),
+    };
+
+    const result = await botService.handleUpdate(
+      {
+        update_id: 10,
+        message: {
+          message_id: 10,
+          from: { id: 987654321, is_bot: false, first_name: 'Ameer', username: 'YourTelegramHandle' },
+          chat: { id: 987654321, type: 'private' },
+          text: '/start connect_nonce_secure_999',
+        },
+      },
+      mockContext
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.action).toBe('account_connected');
+    expect(mockContext.handleAccountConnection).toHaveBeenCalledWith('connect_nonce_secure_999', {
+      id: 987654321,
+      username: 'YourTelegramHandle',
+      firstName: 'Ameer',
+    });
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/sendMessage'),
+      expect.objectContaining({
+        chat_id: 987654321,
+        text: expect.stringContaining('تم ربط حسابك بنجاح كمدير للنظام'),
+      })
+    );
+  });
+
+  it('handles direct photo broadcast from mobile gallery with caption', async () => {
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: { ok: true, result: { file_path: 'photos/file_99.jpg' } } }) // getFile
+      .mockResolvedValueOnce({ data: { ok: true, result: { message_id: 303 } } }) // progress msg
+      .mockResolvedValueOnce({ data: { ok: true, result: { message_id: 304 } } }); // done msg
+
+    const mockContext = {
+      getSystemStatus: vi.fn(),
+      listAccounts: vi.fn(),
+      createPost: vi.fn().mockResolvedValue({ publicationCount: 2 }),
+      handleApprovalDecision: vi.fn(),
+    };
+
+    const result = await botService.handleUpdate(
+      {
+        update_id: 11,
+        message: {
+          message_id: 11,
+          from: { id: 987654321, is_bot: false, first_name: 'Ameer' },
+          chat: { id: 987654321, type: 'private' },
+          caption: 'إطلاق ميزة النشر المرئي المباشر!',
+          photo: [
+            { file_id: 'small_id', width: 320, height: 240 },
+            { file_id: 'large_id_99', width: 1280, height: 960 },
+          ],
+        },
+      },
+      mockContext
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.action).toBe('photo_post_created');
+    expect(mockContext.createPost).toHaveBeenCalledWith({
+      text: 'إطلاق ميزة النشر المرئي المباشر!',
+      mediaUrls: [expect.stringContaining('photos/file_99.jpg')],
+    });
+  });
 });

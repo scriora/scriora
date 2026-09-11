@@ -42,13 +42,16 @@ Scriora can publish to any of the following destinations without requiring rando
 * **Direct Private Chat:**
   * Open the bot in Telegram and press **Start** (`/start`).
 
-#### 3. Admin User ID (C2 & Governance Whitelist) 🛡️
+#### 3. Admin User ID & 1-Click Zero-Manual-Input Linking 🛡️
 * **Purpose:** Enables **Zero-Trust Whitelist Protection** and **Human-in-the-Loop Governance (§14)**:
   * Only this user receives interactive approval cards with inline action buttons.
   * Only this user can issue C2 commands (`/status`, `/accounts`, `/post`) from mobile.
-* **How to obtain:**
-  * Open [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) on Telegram and send `/start` to get your numerical User ID (e.g. `987654321`).
-* **Where to configure:** In your workspace settings or system environment variable `TELEGRAM_ADMIN_CHAT_ID`.
+* **1-Click Connection (No Manual ID Input Needed):**
+  * In the web dashboard, click **[ 🔗 Connect Telegram with 1-Click ]** or scan the QR code.
+  * Tap **Start** in Telegram; the system captures your numerical ID and username automatically and grants admin privileges in under a second.
+* **Manual Discovery Fallback (Optional):**
+  * Open [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) on Telegram and send `/start` to retrieve your numerical User ID (e.g. `987654321`).
+* **Where to configure:** Automatically saved on 1-click start, or configured in `TELEGRAM_ADMIN_CHAT_ID`.
 
 ---
 
