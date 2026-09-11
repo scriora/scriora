@@ -21,11 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: scriora_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+        volumes:
+          - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
         options: >-
           --health-cmd pg_isready
           --health-interval 10s

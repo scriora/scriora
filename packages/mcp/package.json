@@ -21,7 +21,7 @@
                             "@biomejs/biome":  "^2.5.13",
                             "@types/node":  "^22.20.2",
                             "tsx":  "^4.23.13",
-                            "typescript":  "^7.0.2",
+                            "typescript":  "^5.8.2",
                             "vitest":  "^5.0.0",
                             "@vitest/coverage-v8":  "^5.0.0"
                         },

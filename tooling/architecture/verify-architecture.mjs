@@ -27,7 +27,12 @@ if (fs.existsSync(webDir)) {
         }
       } else if (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx")) {
         const content = fs.readFileSync(fullPath, "utf8");
-        if (content.includes("@prisma/client") || content.includes("from '@scriora/core/src/db'")) {
+        if (
+          content.includes("@prisma/client") ||
+          content.includes("@scriora/core/src/db") ||
+          content.includes("scriora-core/src/db") ||
+          content.includes("scriora-core/db")
+        ) {
           reportViolation(
             path.relative(ROOT, fullPath),
             "Frontend DB Isolation",

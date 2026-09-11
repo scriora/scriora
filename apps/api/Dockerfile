@@ -1,11 +1,12 @@
-﻿# scriora-api — Container image
+# scriora-api — Container image
 FROM node:22-alpine AS deps
 WORKDIR /app
 RUN npm install -g pnpm
 
-COPY pnpm-workspace.yaml ./
-COPY scriora-core/package.json ./scriora-core/
-COPY scriora-api/package.json ./scriora-api/
+COPY pnpm-workspace.yaml package.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/social/package.json ./packages/social/
+COPY apps/api/package.json ./apps/api/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -13,15 +14,17 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 RUN npm install -g pnpm
 COPY --from=deps /app ./
-COPY scriora-core ./scriora-core
-COPY scriora-api ./scriora-api
+COPY packages/core ./packages/core
+COPY packages/social ./packages/social
+COPY apps/api ./apps/api
 
 RUN pnpm --filter scriora-core db:generate \
  && pnpm --filter scriora-core build \
+ && pnpm --filter scriora-social build \
  && pnpm --filter scriora-api build
 
 FROM node:22-alpine AS runner
-WORKDIR /app/scriora-api
+WORKDIR /app/apps/api
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 scriora
 

@@ -3,10 +3,10 @@ FROM node:22-alpine AS deps
 WORKDIR /app
 RUN npm install -g pnpm
 
-COPY pnpm-workspace.yaml ./
-COPY scriora-core/package.json ./scriora-core/
-COPY scriora-social/package.json ./scriora-social/
-COPY scriora-worker/package.json ./scriora-worker/
+COPY pnpm-workspace.yaml package.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/social/package.json ./packages/social/
+COPY apps/worker/package.json ./apps/worker/
 
 RUN pnpm install --no-frozen-lockfile
 
@@ -14,9 +14,9 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 RUN npm install -g pnpm
 COPY --from=deps /app ./
-COPY scriora-core ./scriora-core
-COPY scriora-social ./scriora-social
-COPY scriora-worker ./scriora-worker
+COPY packages/core ./packages/core
+COPY packages/social ./packages/social
+COPY apps/worker ./apps/worker
 
 RUN pnpm --filter scriora-core db:generate \
  && pnpm --filter scriora-core build \
@@ -24,7 +24,7 @@ RUN pnpm --filter scriora-core db:generate \
  && pnpm --filter scriora-worker build
 
 FROM node:22-alpine AS runner
-WORKDIR /app/scriora-worker
+WORKDIR /app/apps/worker
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 scriora
 

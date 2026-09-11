@@ -30,6 +30,9 @@
     "db:generate": {
       "cache": false
     },
+    "clean": {
+      "cache": false
+    },
     "dev": {
       "cache": false,
       "persistent": true
