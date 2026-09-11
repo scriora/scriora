@@ -1,13 +1,25 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
-import { LinkedInAdapter, platformRegistry, type SocialPlatformType } from 'scriora-social';
+import {
+  LinkedInAdapter,
+  platformRegistry,
+  type SocialPlatformType,
+  XAdapter,
+} from 'scriora-social';
 import { err, ok } from '../../../lib/response.js';
 
-// Ensure real LinkedIn adapter is registered in platform registry
+// Ensure real adapters are registered in platform registry
 const realLinkedIn = new LinkedInAdapter();
 try {
   platformRegistry.register(realLinkedIn);
+} catch {
+  // Already registered
+}
+
+const realX = new XAdapter();
+try {
+  platformRegistry.register(realX);
 } catch {
   // Already registered
 }
@@ -85,9 +97,22 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const platformUpper = platform.toUpperCase() as SocialPlatform;
+    if (!platformRegistry.has(platformUpper as unknown as SocialPlatformType)) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'UNSUPPORTED_PLATFORM',
+            'VALIDATION_ERROR',
+            `OAuth is not supported for platform: ${platform}`,
+            request.id
+          )
+        );
+    }
+
     const adapter = platformRegistry.get(platformUpper as unknown as SocialPlatformType);
 
-    if (!adapter || !adapter.getAuthorizationUrl) {
+    if (!adapter.getAuthorizationUrl) {
       return reply
         .status(400)
         .send(
@@ -114,14 +139,29 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
 
     const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
     const callbackUrl = `${apiUrl}/v1/connect/${platform}/callback`;
-    const { authorizationUrl } = await adapter.getAuthorizationUrl({
-      workspaceId,
-      redirectUri: callbackUrl,
-      state: stateToken,
-      codeVerifier,
-    });
 
-    return reply.redirect(authorizationUrl);
+    try {
+      const { authorizationUrl } = await adapter.getAuthorizationUrl({
+        workspaceId,
+        redirectUri: callbackUrl,
+        state: stateToken,
+        codeVerifier,
+      });
+
+      return reply.redirect(authorizationUrl);
+    } catch (e: unknown) {
+      const errObj = e as { message?: string; code?: string };
+      return reply
+        .status(400)
+        .send(
+          err(
+            errObj.code ?? 'OAUTH_INIT_FAILED',
+            'VALIDATION_ERROR',
+            errObj.message ?? `Failed to initiate OAuth for ${platform}`,
+            request.id
+          )
+        );
+    }
   });
 
   // 2. OAuth Callback

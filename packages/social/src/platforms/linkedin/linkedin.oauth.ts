@@ -1,4 +1,4 @@
-﻿import crypto from 'node:crypto';
+import crypto from 'node:crypto';
 import axios from 'axios';
 import type {
   OAuthCallbackParams,
@@ -9,12 +9,20 @@ import type {
 import { PlatformError } from '../../errors/social.error.js';
 
 export class LinkedInOAuth {
-  private readonly clientId: string;
-  private readonly clientSecret: string;
+  private readonly clientId: string | undefined;
+  private readonly clientSecret: string | undefined;
 
-  constructor(clientId?: string, clientSecret?: string) {
-    this.clientId = clientId ?? process.env.LINKEDIN_CLIENT_ID ?? '';
-    this.clientSecret = clientSecret ?? process.env.LINKEDIN_CLIENT_SECRET ?? '';
+  constructor(clientId?: string | undefined, clientSecret?: string | undefined) {
+    this.clientId = clientId;
+    this.clientSecret = clientSecret;
+  }
+
+  private get effectiveClientId(): string {
+    return this.clientId || process.env.LINKEDIN_CLIENT_ID || '';
+  }
+
+  private get effectiveClientSecret(): string {
+    return this.clientSecret || process.env.LINKEDIN_CLIENT_SECRET || '';
   }
 
   public static generatePKCE(): { codeVerifier: string; codeChallenge: string } {
@@ -24,7 +32,8 @@ export class LinkedInOAuth {
   }
 
   public getAuthorizationUrl(params: OAuthInitParams): OAuthInitResult {
-    if (!this.clientId) {
+    const clientId = this.effectiveClientId;
+    if (!clientId) {
       throw new PlatformError({
         message: 'LINKEDIN_CLIENT_ID is not configured in environment',
         code: 'MISSING_CLIENT_ID',
@@ -39,7 +48,7 @@ export class LinkedInOAuth {
     const scope = encodeURIComponent('openid profile email w_member_social');
 
     const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${encodeURIComponent(
-      this.clientId
+      clientId
     )}&redirect_uri=${encodeURIComponent(params.redirectUri)}&state=${encodeURIComponent(
       params.state
     )}&scope=${scope}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
@@ -55,8 +64,8 @@ export class LinkedInOAuth {
           grant_type: 'authorization_code',
           code: params.code,
           redirect_uri: params.redirectUri,
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
+          client_id: this.effectiveClientId,
+          client_secret: this.effectiveClientSecret,
           code_verifier: params.codeVerifier,
         }).toString(),
         {
@@ -105,8 +114,8 @@ export class LinkedInOAuth {
         new URLSearchParams({
           grant_type: 'refresh_token',
           refresh_token: refreshToken,
-          client_id: this.clientId,
-          client_secret: this.clientSecret,
+          client_id: this.effectiveClientId,
+          client_secret: this.effectiveClientSecret,
         }).toString(),
         {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
