@@ -114,6 +114,9 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
       { id: xAccId, workspaceId: wsId, platform: 'X' },
     ] as any);
+    vi.spyOn(prisma.mediaAsset, 'findMany').mockResolvedValue([
+      { id: mediaAssetId, storageKey: mediaAssetId },
+    ] as any);
 
     const mockTx = {
       content: {

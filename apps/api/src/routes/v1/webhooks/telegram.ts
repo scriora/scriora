@@ -5,14 +5,17 @@ import { TelegramBotService, type TelegramDbContext, type TelegramUpdate } from 
 import { err } from '../../../lib/response.js';
 
 export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
-  const botToken =
-    process.env.TELEGRAM_BOT_TOKEN || '123456789:ABCdefGHIjklMNOpqrsTUVwxyz';
-  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID || '987654321';
+  const botToken = process.env.TELEGRAM_BOT_TOKEN ?? '';
+  const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID;
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+  if (!botToken) {
+    fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured in environment variables.');
+  }
 
   const botService = new TelegramBotService({
     botToken,
-    adminChatId,
+    ...(adminChatId ? { adminChatId } : {}),
   });
 
   const dbContext: TelegramDbContext = {
