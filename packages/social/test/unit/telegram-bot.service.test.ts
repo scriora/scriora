@@ -217,4 +217,38 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
       })
     );
   });
+
+  it('supports custom button texts and custom headers/templates for approval requests', async () => {
+    mockedAxios.post.mockResolvedValueOnce({ data: { ok: true, result: { message_id: 301 } } });
+
+    const messageId = await botService.sendApprovalRequest({
+      chatId: 987654321,
+      approvalId: 'app_2',
+      token: 'tok_custom_123',
+      title: 'حملة العيد',
+      body: 'كل عام وأنتم بخير!',
+      platform: 'TELEGRAM',
+      customHeader: '✨ <b>مراجعة منشور قبل النشر في قنوات الشركة:</b>',
+      customFooter: 'يرجى اختيار الإجراء المناسب لفريق التسويق:',
+      approveButtonText: '🚀 موافقة ونشر الآن',
+      rejectButtonText: '🛑 إلغاء وتعديل لاحقاً',
+    });
+
+    expect(messageId).toBe(301);
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/sendMessage'),
+      expect.objectContaining({
+        chat_id: 987654321,
+        text: expect.stringContaining('مراجعة منشور قبل النشر'),
+        reply_markup: expect.objectContaining({
+          inline_keyboard: [
+            [
+              expect.objectContaining({ text: '🚀 موافقة ونشر الآن', callback_data: 'approve:tok_custom_123' }),
+              expect.objectContaining({ text: '🛑 إلغاء وتعديل لاحقاً', callback_data: 'reject:tok_custom_123' }),
+            ],
+          ],
+        }),
+      })
+    );
+  });
 });

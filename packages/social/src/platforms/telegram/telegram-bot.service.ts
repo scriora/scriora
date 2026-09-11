@@ -13,6 +13,8 @@ export interface TelegramBotConfig {
   botToken: string;
   adminChatId?: string | number | undefined;
   apiUrl?: string | undefined;
+  approvalApprovedLabel?: string | undefined;
+  approvalRejectedLabel?: string | undefined;
 }
 
 export interface InlineKeyboardButton {
@@ -200,6 +202,7 @@ export class TelegramBotService {
 
   /**
    * Send an interactive Human Governance Approval Request (§14).
+   * Supports fully customizable prompt message and button texts.
    */
   public async sendApprovalRequest(params: {
     chatId: string | number;
@@ -208,27 +211,47 @@ export class TelegramBotService {
     title: string;
     body: string;
     platform: string;
-    scheduledAt?: string;
+    scheduledAt?: string | undefined;
+    approveButtonText?: string | undefined;
+    rejectButtonText?: string | undefined;
+    customHeader?: string | undefined;
+    customFooter?: string | undefined;
+    customTemplate?: ((data: { platform: string; title: string; body: string; scheduledAt?: string | undefined }) => string) | undefined;
   }): Promise<number | null> {
-    const message = [
-      `🛡️ <b>طلب اعتماد منشور جديد (Human Governance §14)</b>`,
-      ``,
-      `📋 <b>المنصة:</b> <code>${params.platform}</code>`,
-      `🏷️ <b>العنوان:</b> ${params.title}`,
-      params.scheduledAt ? `⏰ <b>الموعد المجدول:</b> ${params.scheduledAt}` : `⚡ <b>الموعد:</b> فوري عند الاعتماد`,
-      ``,
-      `📝 <b>نص المنشور:</b>`,
-      `<blockquote>${params.body}</blockquote>`,
-      ``,
-      `اضغط على أحد الخيارات أدناه لاتخاذ القرار:`,
-    ].join('\n');
+    let message: string;
+    if (params.customTemplate) {
+      message = params.customTemplate({
+        platform: params.platform,
+        title: params.title,
+        body: params.body,
+        scheduledAt: params.scheduledAt,
+      });
+    } else {
+      const header = params.customHeader ?? `🛡️ <b>طلب اعتماد منشور جديد (Human Governance §14)</b>`;
+      const footer = params.customFooter ?? `اضغط على أحد الخيارات أدناه لاتخاذ القرار:`;
+      message = [
+        header,
+        ``,
+        `📋 <b>المنصة:</b> <code>${params.platform}</code>`,
+        `🏷️ <b>العنوان:</b> ${params.title}`,
+        params.scheduledAt ? `⏰ <b>الموعد المجدول:</b> ${params.scheduledAt}` : `⚡ <b>الموعد:</b> فوري عند الاعتماد`,
+        ``,
+        `📝 <b>نص المنشور:</b>`,
+        `<blockquote>${params.body}</blockquote>`,
+        ``,
+        footer,
+      ].join('\n');
+    }
+
+    const approveText = params.approveButtonText ?? '✅ اعتماد ونشر فوري';
+    const rejectText = params.rejectButtonText ?? '❌ رفض وإلغاء';
 
     return this.sendMessage(params.chatId, message, {
       replyMarkup: {
         inline_keyboard: [
           [
-            { text: '✅ اعتماد ونشر فوري', callback_data: `approve:${params.token}` },
-            { text: '❌ رفض وإلغاء', callback_data: `reject:${params.token}` },
+            { text: approveText, callback_data: `approve:${params.token}` },
+            { text: rejectText, callback_data: `reject:${params.token}` },
           ],
         ],
       },
@@ -263,7 +286,9 @@ export class TelegramBotService {
         }
 
         const icon = decision === 'APPROVED' ? '✅' : '❌';
-        const label = decision === 'APPROVED' ? 'تم الاعتماد والنشر بنجاح 🚀' : 'تم الرفض وإلغاء المنشور 🗑️';
+        const defaultLabel = decision === 'APPROVED' ? 'تم الاعتماد والنشر بنجاح 🚀' : 'تم الرفض وإلغاء المنشور 🗑️';
+        const customLabel = decision === 'APPROVED' ? this.config.approvalApprovedLabel : this.config.approvalRejectedLabel;
+        const label = customLabel ?? defaultLabel;
 
         await this.answerCallbackQuery(cq.id, `${icon} ${label}`);
 
