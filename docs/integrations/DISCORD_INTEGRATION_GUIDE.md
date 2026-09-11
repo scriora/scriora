@@ -120,25 +120,71 @@ To unlock automated channel discovery, native forum threads, and Human-in-the-Lo
    - ✅ **Message Content Intent** (required for receiving command arguments and interaction feedback).
 4. Click **Save Changes**.
 
-#### 3. Generate 1-Click Bot Invite Link
-1. In the left menu, navigate to **OAuth2** -> **URL Generator**.
-2. Under **Scopes**, select:
+#### 3. Generate 1-Click Bot Invite Link (Zero-Trust / Least Privilege)
+
+> [!IMPORTANT]
+> **Why NEVER use Administrator (`0x8`) in Production?**  
+> In enterprise security and Discord verification, granting the `Administrator` permission violates the **Principle of Least Privilege (PoLP)**. It grants absolute power over the entire guild (including deleting channels, banning members, and editing server settings).  
+> Scriora is engineered to function **100% autonomously without Administrator privileges**.
+
+##### A. Permission Tiers Comparison & Bitfield Calculation
+
+| Permission Name in Discord | Bitflag Hex | Decimal Value | Minimal (68608) | Standard (309237763072) | Power Suite (326419999808) 🌟 | Feature Unlocked in Scriora |
+|---|:---:|:---:|:---:|:---:|:---:|---|
+| **View Channels** | `0x400` | `1,024` | `[✔]` | `[✔]` | `[✔]` | Server & channel automated discovery |
+| **Send Messages** | `0x800` | `2,048` | `[✔]` | `[✔]` | `[✔]` | Text broadcasting |
+| **Read Message History** | `0x10000` | `65,536` | `[✔]` | `[✔]` | `[✔]` | Post status verification & idempotency |
+| **Embed Links** | `0x4000` | `16,384` | `[ ]` | `[✔]` | `[✔]` | Colored embed cards, author, footer |
+| **Attach Files** | `0x8000` | `32,768` | `[ ]` | `[✔]` | `[✔]` | Images, media collages & video drops |
+| **Create Public Threads** | `0x800000000` | `34,359,738,368` | `[ ]` | `[✔]` | `[✔]` | Forum topics & discussion branch |
+| **Send Messages in Threads**| `0x4000000000` | `274,877,906,944` | `[ ]` | `[✔]` | `[✔]` | Follow-up comments in threads |
+| **Add Reactions** | `0x40` | `64` | `[ ]` | `[ ]` | `[✔]` | Automated reaction matrix (e.g. 🔥🚀) |
+| **Manage Messages** | `0x2000` | `8,192` | `[ ]` | `[ ]` | `[✔]` | **Pinning messages** & lifecycle post deletion |
+| **Use External Emojis** | `0x40000` | `262,144` | `[ ]` | `[ ]` | `[✔]` | Custom server emotes in reactions |
+| **Manage Threads** | `0x400000000` | `17,179,869,184` | `[ ]` | `[ ]` | `[✔]` | Thread moderation & locking |
+
+---
+
+##### B. Checkbox-by-Checkbox Guide (Discord Developer Portal)
+
+When generating your bot invite link under **OAuth2** ➔ **URL Generator**:
+
+1. **Step 1: Scopes Checkboxes**
    - `[✔] bot`
-   - `[✔] applications.commands`
-3. Under **Bot Permissions**, select:
-   - `[✔] View Channels`
-   - `[✔] Send Messages`
-   - `[✔] Send Messages in Threads`
-   - `[✔] Create Public Threads`
-   - `[✔] Embed Links`
-   - `[✔] Attach Files`
-   - `[✔] Read Message History`
-4. The generated permission integer is: `397284550720`.
-5. Copy the generated invite link:
+   - `[✔] applications.commands` (enables slash commands and interaction buttons)
+
+2. **Step 2: Bot Permissions Checkboxes (Power Suite - `326419999808`)**
+   - Under **General Permissions**:
+     - `[✔] View Channels`
+   - Under **Text Permissions**:
+     - `[✔] Send Messages`
+     - `[✔] Send Messages in Threads`
+     - `[✔] Create Public Threads`
+     - `[✔] Embed Links`
+     - `[✔] Attach Files`
+     - `[✔] Read Message History`
+     - `[✔] Add Reactions`
+     - `[✔] Use External Emojis`
+     - `[✔] Manage Messages` *(Required to pin announcements and auto-delete temporary posts)*
+     - `[✔] Manage Threads` *(Required to manage spawned discussion topics)*
+   - **DO NOT CHECK:**
+     - `[ ] Administrator` ❌ (Unnecessary and dangerous)
+     - `[ ] Manage Server` ❌
+     - `[ ] Kick / Ban Members` ❌
+
+3. **Step 3: Copy the Generated Least-Privilege URL**
    ```text
-   https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=397284550720&scope=bot%20applications.commands
+   https://discord.com/oauth2/authorize?client_id={CLIENT_ID}&permissions=326419999808&scope=bot%20applications.commands
    ```
-6. Open this link in your browser, select your Discord server from the dropdown, and click **Authorize**.
+
+##### C. Channel-Specific Isolation (Maximum Security)
+
+If your organization requires the bot to only access designated channels (e.g., `#announcements` only):
+1. In your Discord Server Settings ➔ **Roles**, find the bot's auto-created role (e.g., `Scriora Bot`).
+2. Remove "View Channels" from the global server role.
+3. Navigate to the specific target channel (e.g., `#announcements`) ➔ **Edit Channel** ➔ **Permissions**.
+4. Add the `Scriora Bot` role explicitly and grant the 11 checkboxes above for **this channel only**.
+5. Result: The bot is completely blinded to all other private staff channels, yet functions with 100% capability in the designated broadcast channel.
 
 ---
 
@@ -218,14 +264,18 @@ export interface DiscordOptions {
   username?: string;
   /** Custom avatar URL (Webhook mode only) */
   avatarUrl?: string;
-  /** Forum thread title when publishing to a Forum Channel (Type 15) */
+  /** Automatically pin the message after posting (requires PIN_MESSAGES permission) */
+  pinMessage?: boolean;
+  /** List of Unicode emojis or identifiers to react with (requires ADD_REACTIONS permission) */
+  autoReactions?: string[];
+  /** Forum thread title or thread to spawn under post (requires CREATE_PUBLIC_THREADS) */
   threadName?: string;
+  /** Explicitly allow @everyone and role mentions (requires MENTION_EVERYONE) */
+  allowEveryoneMention?: boolean;
 }
 ```
 
-### Publishing Rich Embed with Multi-Image Album:
-
-Discord allows up to **4 images** to be displayed in a seamless 2x2 collage by sharing identical `url` fields across embeds:
+### Publishing Rich Embed with Auto-Pin & Auto-Reactions:
 
 ```http
 POST /v1/posts
@@ -233,7 +283,7 @@ Content-Type: application/json
 x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 
 {
-  "body": "🚀 **Scriora 2.0 is Officially Live!**\n\nWe have completely revamped our omnichannel distribution engine. Read the highlights below 👇",
+  "body": "🚀 **Scriora 2.0 is Officially Live!**\n\nWe have completely revamped our omnichannel distribution engine. React below! 👇",
   "targets": [
     {
       "platform": "DISCORD",
@@ -244,14 +294,15 @@ x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
           "embedTitle": "⚡ Enterprise Distribution Engine Activated",
           "embedDescription": "• Zero-Trust Token Envelopes\n• Transactional Outbox Pipeline\n• Real-Time Human Governance",
           "embedColor": "#10B981",
-          "embedFooter": "Scriora Omnichannel Suite • Verified Dispatch"
+          "embedFooter": "Scriora Omnichannel Suite • Verified Dispatch",
+          "pinMessage": true,
+          "autoReactions": ["🔥", "🚀", "🎉"]
         }
       }
     }
   ],
   "mediaUrls": [
-    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800",
-    "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800"
+    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800"
   ]
 }
 ```

@@ -18,6 +18,9 @@ The **Scriora Developer API** is a unified, high-performance REST gateway engine
 * **Enterprise White-Labeling:** Bring your own bot tokens, custom webhooks, and branded action buttons.
 * **Zero-Trust Security:** Every third-party token is encrypted at rest using AES-256-GCM envelope encryption with unique 96-bit initialization vectors.
 
+> [!TIP]
+> For the in-depth architectural guide covering the Canonical Gateway, complete platform options, and endpoint mappings for Discord, Telegram, LinkedIn, X, and Meta, read the [Unified Publishing API & Omnichannel Platform Specification](./UNIFIED_AND_PLATFORM_APIS.md).
+
 ```mermaid
 flowchart LR
     App["Your SaaS / AI Agent / CRM"] -->|POST /v1/posts<br/>with X-API-Key| Gateway["Scriora API Gateway<br/>(:4000 / api.scriora.io)"]
@@ -208,7 +211,9 @@ X-Workspace-Id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
           "embedTitle": "⚡ Scriora Developer API Released",
           "embedDescription": "Orchestrate social media from your code with a single API call.",
           "embedColor": "#10B981",
-          "embedFooter": "Scriora Developer Platform"
+          "embedFooter": "Scriora Developer Platform",
+          "pinMessage": true,
+          "autoReactions": ["🔥", "🚀", "🎉"]
         }
       }
     },
