@@ -4,12 +4,14 @@
 // Reference: scriora-docs/architecture/SCRIORA_FINAL_DATABASE_CONTRACT.md
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector"), pgcrypto]
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -241,29 +243,48 @@ enum SkillExecutionStatus {
   FAILED
 }
 
+/// Agent Memory Tier — maps to 6-tier architecture in ENGINEERING_SPECIFICATION.md §15
+enum MemoryTier {
+  WORKING      /// T1 — Redis: in-flight task context (volatile)
+  EPHEMERAL    /// T2 — Redis: short-term session scratchpad (volatile)
+  EPISODIC     /// T3 — PostgreSQL: timestamped event log of decisions
+  SEMANTIC     /// T4 — PostgreSQL + pgvector: cosine-searchable knowledge
+  PROCEDURAL   /// T5 — PostgreSQL: skill blueprints and playbooks
+  EVALUATIVE   /// T6 — PostgreSQL: scored outcomes and A/B results
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 2. IDENTITY & TENANCY
 // ═══════════════════════════════════════════════════════════════════════════
 
 model User {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email            String           @unique
-  name             String
-  avatarUrl        String?          @map("avatar_url")
-  authProvider     UserAuthProvider @default(LOCAL) @map("auth_provider")
-  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email               String           @unique
+  name                String
+  avatarUrl           String?          @map("avatar_url")
+  authProvider        UserAuthProvider @default(LOCAL) @map("auth_provider")
+  /// Argon2id hash — null for MAGIC_LINK, GOOGLE, GITHUB auth providers
+  passwordHash        String?          @map("password_hash") @db.Text
+  /// Single-use magic link token hash (SHA-256). Cleared after use.
+  magicLinkTokenHash  String?          @map("magic_link_token_hash") @db.VarChar(64)
+  magicLinkExpiresAt  DateTime?        @map("magic_link_expires_at") @db.Timestamptz(6)
+  emailVerifiedAt     DateTime?        @map("email_verified_at") @db.Timestamptz(6)
+  lastLoginAt         DateTime?        @map("last_login_at") @db.Timestamptz(6)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relationships
-  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
-  memberships      WorkspaceMember[]
-  createdContents  Content[]         @relation("ContentCreator")
-  publications     Publication[]     @relation("PublicationCreator")
-  missionsCreated  Mission[]         @relation("MissionCreator")
-  approvalsReq     Approval[]        @relation("ApprovalRequester")
-  approvalsDec     Approval[]        @relation("ApprovalDecider")
+  ownedWorkspaces     Workspace[]       @relation("WorkspaceOwner")
+  memberships         WorkspaceMember[]
+  apiKeys             ApiKey[]
+  createdContents     Content[]         @relation("ContentCreator")
+  publications        Publication[]     @relation("PublicationCreator")
+  missionsCreated     Mission[]         @relation("MissionCreator")
+  approvalsReq        Approval[]        @relation("ApprovalRequester")
+  approvalsDec        Approval[]        @relation("ApprovalDecider")
 
   @@index([email])
+  @@index([magicLinkTokenHash])
   @@map("users")
 }
 
@@ -276,6 +297,11 @@ model Workspace {
   ownerUserId          String           @map("owner_user_id") @db.Uuid
   country              String?
   timezone             String           @default("UTC")
+  /// Require human approval before any publication is dispatched
+  requiresApproval     Boolean          @default(false) @map("requires_approval")
+  /// DB-backed feature flags — see ENGINEERING_SPECIFICATION.md §16.4
+  /// Shape: { features: { betaAgentMode: boolean, tiktokAdapter: boolean, ... } }
+  settings             Json             @default("{}")
   createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -284,6 +310,7 @@ model Workspace {
 
   // Tenant Collections
   members              WorkspaceMember[]
+  apiKeys              ApiKey[]
   socialAccounts       SocialAccount[]
   contents             Content[]
   contentVariants      ContentVariant[]
@@ -322,6 +349,34 @@ model WorkspaceMember {
   @@id([workspaceId, userId])
   @@index([userId])
   @@map("workspace_members")
+}
+
+/// Workspace-scoped API keys for programmatic access (developer integrations, CI/CD, MCP agents)
+/// Raw key is shown ONCE at creation. Only SHA-256(key) is stored.
+/// Key format: sk_live_<base62(32)> (production) | sk_test_<base62(32)> (development)
+model ApiKey {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  /// Human-readable label e.g. "Production CI", "n8n Integration"
+  name        String    @db.VarChar(100)
+  /// SHA-256(rawKey) — used for constant-time lookup
+  keyHash     String    @unique @map("key_hash") @db.VarChar(64)
+  /// Key prefix only, stored for display: "sk_live_aBcD..."
+  keyPrefix   String    @map("key_prefix") @db.VarChar(20)
+  /// JSON array of allowed scopes e.g. ["posts:write", "analytics:read"]
+  scopes      Json      @default("[]")
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz(6)
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([keyHash])
+  @@map("api_keys")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -601,6 +656,7 @@ model Mission {
   insights        Insight[]
   decisions       Decision[]
   agentTasks      AgentTask[]
+  memories        Memory[]
 
   @@index([workspaceId, status])
   @@index([workspaceId, endsAt])
@@ -845,21 +901,28 @@ model Decision {
 }
 
 model Memory {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId String    @map("workspace_id") @db.Uuid
-  category    String    @db.VarChar(50)
-  content     String    @db.Text
-  sourceType  String    @map("source_type") @db.VarChar(50)
-  sourceId    String?   @map("source_id") @db.Uuid
-  confidence  Decimal   @default(1.0) @db.Decimal(5, 4)
-  importance  Decimal?  @default(0.5) @db.Decimal(5, 4)
-  validFrom   DateTime? @default(now()) @map("valid_from") @db.Timestamptz(6)
-  validUntil  DateTime? @map("valid_until") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String                   @map("workspace_id") @db.Uuid
+  missionId   String?                  @map("mission_id") @db.Uuid
+  tier        MemoryTier               @default(EPISODIC)
+  category    String                   @db.VarChar(50)
+  content     String                   @db.Text
+  /// pgvector embedding (1536-dim, OpenAI text-embedding-3-small compatible)
+  /// Used for T4 Semantic Memory cosine similarity search via pgvector
+  embedding   Unsupported("vector(1536)")?
+  sourceType  String                   @map("source_type") @db.VarChar(50)
+  sourceId    String?                  @map("source_id") @db.Uuid
+  confidence  Decimal                  @default(1.0) @db.Decimal(5, 4)
+  importance  Decimal?                 @default(0.5) @db.Decimal(5, 4)
+  validFrom   DateTime?                @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil  DateTime?                @map("valid_until") @db.Timestamptz(6)
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission     Mission?                 @relation(fields: [missionId], references: [id], onDelete: SetNull)
 
+  @@index([workspaceId, tier])
   @@index([workspaceId, category])
   @@index([sourceType, sourceId])
   @@index([workspaceId, validUntil])
