@@ -3,7 +3,13 @@ import { PlatformError, platformRegistry, type SocialPlatformType } from 'scrior
 import { inngest } from '../inngest/client.js';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
-const envelopeService = new SecretEnvelopeService();
+let envelopeServiceInstance: SecretEnvelopeService | null = null;
+function getEnvelopeService(): SecretEnvelopeService {
+  if (!envelopeServiceInstance) {
+    envelopeServiceInstance = new SecretEnvelopeService();
+  }
+  return envelopeServiceInstance;
+}
 
 export const publishJob = inngest.createFunction(
   {
@@ -13,7 +19,13 @@ export const publishJob = inngest.createFunction(
     triggers: [{ event: 'scriora/publication.requested' }],
   },
   async ({ event, step }) => {
-    const { outboxCommandId } = event.data as { outboxCommandId: string };
+    const rawOutboxCommandId = (event.data as { outboxCommandId?: unknown })?.outboxCommandId;
+    if (typeof rawOutboxCommandId !== 'string' || !rawOutboxCommandId.trim()) {
+      throw new Error(
+        'INVALID_EVENT_DATA: outboxCommandId is required and must be a non-empty string'
+      );
+    }
+    const outboxCommandId = rawOutboxCommandId.trim();
 
     // 1. Fetch Outbox Command & associated domain records
     const outboxRecord = await step.run('fetch-outbox-record', async () => {
@@ -59,8 +71,37 @@ export const publishJob = inngest.createFunction(
     });
 
     const pub = outboxRecord.publication;
+    if (!pub) {
+      throw new Error(`Publication record missing for outboxCommand: ${outboxCommandId}`);
+    }
+
     const account = pub.socialAccount;
-    const envelope = account.secretEnvelopes[0];
+    if (!account?.id || !account.platform || !account.externalAccountId) {
+      await step.run('handle-invalid-account', async () => {
+        await prisma.$transaction([
+          prisma.publishAttempt.update({
+            where: { id: outboxRecord.publishAttemptId },
+            data: {
+              status: 'FAILED_PERMANENT',
+              errorCode: 'INVALID_ACCOUNT',
+              errorMessage: 'Social account is missing or has invalid configuration',
+              completedAt: new Date(),
+            },
+          }),
+          prisma.publication.update({
+            where: { id: pub.id },
+            data: { status: 'FAILED' },
+          }),
+          prisma.outboxCommand.update({
+            where: { id: outboxCommandId },
+            data: { status: 'FAILED' },
+          }),
+        ]);
+      });
+      return { status: 'FAILED_PERMANENT', reason: 'Invalid social account' };
+    }
+
+    const envelope = account.secretEnvelopes?.[0];
 
     if (!envelope) {
       await step.run('handle-missing-credentials', async () => {
@@ -87,16 +128,9 @@ export const publishJob = inngest.createFunction(
       return { status: 'FAILED_PERMANENT', reason: 'Missing credentials' };
     }
 
-    // 2. Decrypt OAuth access token
+    // 2. Decrypt OAuth access token directly from fetched envelope (no redundant DB query)
     const decrypted = await step.run('decrypt-credentials', async () => {
-      const activeEnvelope = await prisma.secretEnvelope.findFirst({
-        where: { socialAccountId: account.id },
-        orderBy: { createdAt: 'desc' },
-      });
-      if (!activeEnvelope) {
-        throw new Error(`No envelope found for account: ${account.id}`);
-      }
-      return envelopeService.decrypt(Buffer.from(activeEnvelope.envelopeData));
+      return getEnvelopeService().decrypt(envelope.envelopeData);
     });
 
     // 3. Dispatch to Social Adapter
@@ -182,6 +216,7 @@ export const publishJob = inngest.createFunction(
 
       // 5. Trigger post verification after 60 seconds (§3.1 Intent != Result)
       if (externalPostId) {
+        await step.sleep('wait-for-platform-ingest', '60s');
         await step.sendEvent('trigger-verification', {
           name: 'scriora/publication.verify',
           data: {

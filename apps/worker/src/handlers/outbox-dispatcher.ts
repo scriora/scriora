@@ -1,5 +1,20 @@
 import type { PrismaClient } from 'scriora-core';
 import { platformRegistry, type SocialPlatformType } from 'scriora-social';
+import { z } from 'zod';
+
+export const OutboxPayloadSchema = z
+  .object({
+    platform: z.string().min(1, 'platform is required'),
+    socialAccountId: z.string().min(1, 'socialAccountId is required'),
+    body: z.string().nullable().optional(),
+    mediaUrls: z.array(z.string()).optional(),
+    idempotencyKey: z.string().min(1, 'idempotencyKey is required'),
+    fingerprint: z.string().min(1, 'fingerprint is required'),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .passthrough();
+
+export type OutboxPayload = z.infer<typeof OutboxPayloadSchema>;
 
 export interface DispatchResult {
   success: boolean;
@@ -29,6 +44,38 @@ export async function processOutboxCommand(
     return { success: true, externalPostId: command.publication.externalPostId ?? undefined };
   }
 
+  // Validate command.payload with Zod before processing
+  const validationResult = OutboxPayloadSchema.safeParse(command.payload);
+  if (!validationResult.success) {
+    const errorMessage = `INVALID_PAYLOAD: ${validationResult.error.message}`;
+
+    await db.publishAttempt.update({
+      where: { id: command.publishAttemptId },
+      data: {
+        status: 'FAILED_PERMANENT',
+        errorMessage,
+      },
+    });
+
+    await db.publication.update({
+      where: { id: command.publicationId },
+      data: { status: 'FAILED' },
+    });
+
+    await db.outboxCommand.update({
+      where: { id: outboxCommandId },
+      data: {
+        status: 'FAILED',
+        lastError: { message: errorMessage, at: new Date().toISOString() },
+      },
+    });
+
+    return { success: false, error: errorMessage };
+  }
+
+  const payload = validationResult.data;
+  const platform = payload.platform as SocialPlatformType;
+
   // Mark command as claimed / processing
   await db.outboxCommand.update({
     where: { id: outboxCommandId },
@@ -39,55 +86,58 @@ export async function processOutboxCommand(
     },
   });
 
-  const payload = command.payload as Record<string, unknown>;
-  const platform = payload.platform as SocialPlatformType;
-
-  // 2. Resolve platform adapter from scriora-social
-  const adapter = platformRegistry.get(platform);
-
   try {
+    // 2. Resolve platform adapter from scriora-social
+    const adapter = platformRegistry.get(platform);
+
     // 3. Dispatch to platform
     const result = await adapter.publish({
       workspaceId: command.workspaceId,
-      accountId: payload.socialAccountId as string,
-      text: (payload.body as string) ?? '',
-      mediaUrls: [],
-      idempotencyKey: payload.idempotencyKey as string,
-      fingerprint: payload.fingerprint as string,
-      metadata: {},
+      accountId: payload.socialAccountId,
+      text: payload.body ?? '',
+      mediaUrls: payload.mediaUrls ?? [],
+      idempotencyKey: payload.idempotencyKey,
+      fingerprint: payload.fingerprint,
+      metadata: payload.metadata ?? {},
     });
 
     if (result.status === 'SUCCEEDED' && result.externalPostId) {
       // 4. Update database records inside transaction
-      await db.$transaction(async (tx) => {
-        await tx.publishAttempt.update({
-          where: { id: command.publishAttemptId },
-          data: {
-            status: 'SUCCEEDED',
-            externalId: result.externalPostId ?? null,
-            externalUrl: result.externalPostUrl ?? null,
-            completedAt: new Date(),
-          },
-        });
+      await db.$transaction(
+        async (tx: {
+          publishAttempt: { update: PrismaClient['publishAttempt']['update'] };
+          publication: { update: PrismaClient['publication']['update'] };
+          outboxCommand: { update: PrismaClient['outboxCommand']['update'] };
+        }) => {
+          await tx.publishAttempt.update({
+            where: { id: command.publishAttemptId },
+            data: {
+              status: 'SUCCEEDED',
+              externalId: result.externalPostId ?? null,
+              externalUrl: result.externalPostUrl ?? null,
+              completedAt: new Date(),
+            },
+          });
 
-        await tx.publication.update({
-          where: { id: command.publicationId },
-          data: {
-            status: 'PUBLISHED',
-            externalPostId: result.externalPostId ?? null,
-            externalPostUrl: result.externalPostUrl ?? null,
-            publishedAt: new Date(),
-          },
-        });
+          await tx.publication.update({
+            where: { id: command.publicationId },
+            data: {
+              status: 'PUBLISHED',
+              externalPostId: result.externalPostId ?? null,
+              externalPostUrl: result.externalPostUrl ?? null,
+              publishedAt: new Date(),
+            },
+          });
 
-        await tx.outboxCommand.update({
-          where: { id: outboxCommandId },
-          data: {
-            status: 'PUBLISHED',
-            processedAt: new Date(),
-          },
-        });
-      });
+          await tx.outboxCommand.update({
+            where: { id: outboxCommandId },
+            data: {
+              status: 'PUBLISHED',
+              processedAt: new Date(),
+            },
+          });
+        }
+      );
 
       return {
         success: true,
@@ -100,6 +150,11 @@ export async function processOutboxCommand(
     await db.publishAttempt.update({
       where: { id: command.publishAttemptId },
       data: { status: 'FAILED_PERMANENT' },
+    });
+
+    await db.publication.update({
+      where: { id: command.publicationId },
+      data: { status: 'FAILED' },
     });
 
     await db.outboxCommand.update({
@@ -117,6 +172,11 @@ export async function processOutboxCommand(
         status: 'FAILED_PERMANENT',
         errorMessage,
       },
+    });
+
+    await db.publication.update({
+      where: { id: command.publicationId },
+      data: { status: 'FAILED' },
     });
 
     await db.outboxCommand.update({

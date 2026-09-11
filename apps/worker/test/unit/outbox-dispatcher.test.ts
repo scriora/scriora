@@ -1,7 +1,11 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { MockLinkedInAdapter, platformRegistry } from 'scriora-social';
 import { processOutboxCommand } from '../../src/handlers/outbox-dispatcher.js';
 
 describe('Outbox Dispatcher Unit Tests', () => {
+  beforeAll(() => {
+    platformRegistry.register(new MockLinkedInAdapter());
+  });
   it('dispatches command to platform adapter and updates records to SUCCEEDED and PUBLISHED', async () => {
     const mockTx = {
       publishAttempt: { update: vi.fn().mockResolvedValue({}) },
@@ -100,6 +104,7 @@ describe('Outbox Dispatcher Unit Tests', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       publishAttempt: { update: vi.fn().mockResolvedValue({}) },
+      publication: { update: vi.fn().mockResolvedValue({}) },
     };
 
     const { platformRegistry } = await import('scriora-social');
@@ -116,6 +121,12 @@ describe('Outbox Dispatcher Unit Tests', () => {
       expect.objectContaining({
         where: { id: 'attempt-fail' },
         data: { status: 'FAILED_PERMANENT' },
+      })
+    );
+    expect(mockDb.publication.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pub-1' },
+        data: { status: 'FAILED' },
       })
     );
     expect(mockDb.outboxCommand.update).toHaveBeenCalledWith(
@@ -150,6 +161,7 @@ describe('Outbox Dispatcher Unit Tests', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       publishAttempt: { update: vi.fn().mockResolvedValue({}) },
+      publication: { update: vi.fn().mockResolvedValue({}) },
     };
 
     const { platformRegistry } = await import('scriora-social');
@@ -166,6 +178,12 @@ describe('Outbox Dispatcher Unit Tests', () => {
           status: 'FAILED_PERMANENT',
           errorMessage: 'Network failure',
         }),
+      })
+    );
+    expect(mockDb.publication.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pub-1' },
+        data: { status: 'FAILED' },
       })
     );
     expect(mockDb.outboxCommand.update).toHaveBeenCalledWith(
@@ -216,6 +234,7 @@ describe('Outbox Dispatcher Unit Tests', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       publishAttempt: { update: vi.fn().mockResolvedValue({}) },
+      publication: { update: vi.fn().mockResolvedValue({}) },
     };
 
     const { platformRegistry } = await import('scriora-social');
@@ -232,6 +251,12 @@ describe('Outbox Dispatcher Unit Tests', () => {
           status: 'FAILED_PERMANENT',
           errorMessage: 'UNKNOWN_DISPATCH_ERROR',
         }),
+      })
+    );
+    expect(mockDb.publication.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pub-1' },
+        data: { status: 'FAILED' },
       })
     );
 
@@ -313,6 +338,7 @@ describe('Outbox Dispatcher Unit Tests', () => {
         update: vi.fn().mockResolvedValue({}),
       },
       publishAttempt: { update: vi.fn().mockResolvedValue({}) },
+      publication: { update: vi.fn().mockResolvedValue({}) },
     };
 
     const { platformRegistry } = await import('scriora-social');
@@ -324,7 +350,58 @@ describe('Outbox Dispatcher Unit Tests', () => {
     const result = await processOutboxCommand(mockDb as any, 'outbox-no-id');
     expect(result.success).toBe(false);
     expect(result.error).toBe('DISPATCH_UNSUCCESSFUL');
+    expect(mockDb.publication.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pub-1' },
+        data: { status: 'FAILED' },
+      })
+    );
 
     publishSpy.mockRestore();
+  });
+
+  it('fails and marks publication FAILED when command.payload fails Zod validation', async () => {
+    const mockDb = {
+      outboxCommand: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'outbox-invalid-payload',
+          workspaceId: 'ws-1',
+          publicationId: 'pub-1',
+          publishAttemptId: 'attempt-invalid',
+          status: 'PENDING',
+          payload: {
+            // missing platform, socialAccountId, idempotencyKey, fingerprint
+            body: 'Invalid payload post',
+          },
+          publication: { id: 'pub-1' },
+          publishAttempt: { id: 'attempt-invalid' },
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      publishAttempt: { update: vi.fn().mockResolvedValue({}) },
+      publication: { update: vi.fn().mockResolvedValue({}) },
+    };
+
+    const result = await processOutboxCommand(mockDb as any, 'outbox-invalid-payload');
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('INVALID_PAYLOAD');
+    expect(mockDb.publishAttempt.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'attempt-invalid' },
+        data: expect.objectContaining({ status: 'FAILED_PERMANENT' }),
+      })
+    );
+    expect(mockDb.publication.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'pub-1' },
+        data: { status: 'FAILED' },
+      })
+    );
+    expect(mockDb.outboxCommand.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'outbox-invalid-payload' },
+        data: expect.objectContaining({ status: 'FAILED' }),
+      })
+    );
   });
 });

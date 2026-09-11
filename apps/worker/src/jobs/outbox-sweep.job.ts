@@ -8,14 +8,26 @@ export const outboxSweepJob = inngest.createFunction(
     triggers: [{ cron: '*/5 * * * *' }],
   },
   async ({ step }) => {
-    // Find any PENDING OutboxCommand older than 2 minutes
+    // Find actionable OutboxCommands:
+    // 1. PENDING commands with availableAt <= now
+    // 2. PROCESSING commands stuck for more than 10 minutes (updatedAt < tenMinutesAgo)
     const staleCommands = await step.run('find-stale-outbox-commands', async () => {
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      const now = new Date();
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
       return prisma.outboxCommand.findMany({
         where: {
-          status: 'PENDING',
-          createdAt: { lt: twoMinutesAgo },
           attempts: { lt: 5 },
+          OR: [
+            {
+              status: 'PENDING',
+              availableAt: { lte: now },
+            },
+            {
+              status: 'PROCESSING',
+              updatedAt: { lt: tenMinutesAgo },
+            },
+          ],
         },
         take: 20,
         select: { id: true },

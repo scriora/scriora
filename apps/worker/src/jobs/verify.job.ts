@@ -11,33 +11,83 @@ export const verifyJob = inngest.createFunction(
     triggers: [{ event: 'scriora/publication.verify' }],
   },
   async ({ event, step }) => {
-    const { publicationId, externalPostId, platform } = event.data as {
-      publicationId: string;
-      externalPostId: string;
-      platform: string;
+    const rawData = event.data as {
+      publicationId?: unknown;
+      externalPostId?: unknown;
+      platform?: unknown;
     };
 
+    if (
+      typeof rawData?.publicationId !== 'string' ||
+      typeof rawData?.externalPostId !== 'string' ||
+      typeof rawData?.platform !== 'string'
+    ) {
+      throw new Error(
+        'INVALID_EVENT_DATA: publicationId, externalPostId, and platform must be non-empty strings'
+      );
+    }
+
+    const { publicationId, externalPostId, platform } = rawData;
+
     const isVerified = await step.run('verify-with-platform', async () => {
-      const adapter = platformRegistry.get(platform as unknown as SocialPlatformType);
-      if (!adapter) return false;
-      return adapter.verify(externalPostId);
+      const platformType = platform as SocialPlatformType;
+      if (!platformRegistry.has(platformType)) {
+        return false;
+      }
+      try {
+        const adapter = platformRegistry.get(platformType);
+        return await adapter.verify(externalPostId);
+      } catch {
+        return false;
+      }
     });
 
     await step.run('update-verification-state', async () => {
+      const latestAttempt = await prisma.publishAttempt.findFirst({
+        where: { publicationId },
+        orderBy: { attemptNumber: 'desc' },
+      });
+
       if (isVerified) {
-        await prisma.publication.update({
-          where: { id: publicationId },
-          data: {
-            status: 'PUBLISHED',
-          },
-        });
+        await prisma.$transaction([
+          prisma.publication.update({
+            where: { id: publicationId },
+            data: {
+              status: 'PUBLISHED',
+            },
+          }),
+          ...(latestAttempt
+            ? [
+                prisma.publishAttempt.update({
+                  where: { id: latestAttempt.id },
+                  data: {
+                    status: 'SUCCEEDED',
+                    completedAt: new Date(),
+                  },
+                }),
+              ]
+            : []),
+        ]);
       } else {
-        await prisma.publication.update({
-          where: { id: publicationId },
-          data: {
-            status: 'UNKNOWN_EXTERNAL_STATE',
-          },
-        });
+        await prisma.$transaction([
+          prisma.publication.update({
+            where: { id: publicationId },
+            data: {
+              status: 'UNKNOWN_EXTERNAL_STATE',
+            },
+          }),
+          ...(latestAttempt
+            ? [
+                prisma.publishAttempt.update({
+                  where: { id: latestAttempt.id },
+                  data: {
+                    status: 'UNKNOWN_EXTERNAL_STATE',
+                    completedAt: new Date(),
+                  },
+                }),
+              ]
+            : []),
+        ]);
       }
     });
 
