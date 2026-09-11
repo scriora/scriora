@@ -169,6 +169,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
             commandType: 'SOCIAL_PUBLISH',
             payload: payloadJson,
             status: 'PENDING',
+            availableAt: scheduledAt ? new Date(scheduledAt) : new Date(),
           },
         });
 

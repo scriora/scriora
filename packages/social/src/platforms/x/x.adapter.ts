@@ -142,6 +142,26 @@ export class XAdapter implements PlatformAdapter {
           payload.reply = {
             in_reply_to_tweet_id: previousTweetId,
           };
+        } else if (request.metadata?.replyToId) {
+          payload.reply = {
+            in_reply_to_tweet_id: request.metadata.replyToId,
+          };
+        }
+
+        // Attach media IDs if provided on root tweet
+        const mediaIds = (request.metadata?.mediaIds as string[]) || [];
+        if (!previousTweetId && mediaIds.length > 0) {
+          payload.media = { media_ids: mediaIds };
+        }
+
+        // Attach reply settings if provided
+        if (request.metadata?.replySettings) {
+          payload.reply_settings = request.metadata.replySettings;
+        }
+
+        // Attach poll if provided on first tweet
+        if (!previousTweetId && request.metadata?.poll) {
+          payload.poll = request.metadata.poll;
         }
 
         const response = await axios.post('https://api.twitter.com/2/tweets', payload, {

@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import type {
   OAuthCallbackParams,
   OAuthInitParams,
@@ -64,6 +64,25 @@ export class LinkedInAdapter implements PlatformAdapter {
     }
 
     try {
+      const visibilitySetting =
+        (request.metadata?.visibility as string) === 'CONNECTIONS' ? 'CONNECTIONS' : 'PUBLIC';
+      const isDocument = Boolean(
+        request.metadata?.documentTitle || request.metadata?.postType === 'DOCUMENT'
+      );
+      const shareMediaCategory = isDocument
+        ? 'DOCUMENT'
+        : request.mediaUrls.length > 0
+          ? 'IMAGE'
+          : 'NONE';
+
+      const mediaItems = request.mediaUrls.map((url) => ({
+        status: 'READY',
+        originalUrl: url,
+        ...(request.metadata?.documentTitle
+          ? { title: { text: String(request.metadata.documentTitle) } }
+          : {}),
+      }));
+
       const payload = {
         author: authorUrn,
         lifecycleState: 'PUBLISHED',
@@ -72,15 +91,12 @@ export class LinkedInAdapter implements PlatformAdapter {
             shareCommentary: {
               text: request.text || '',
             },
-            shareMediaCategory: request.mediaUrls.length > 0 ? 'IMAGE' : 'NONE',
-            media: request.mediaUrls.map((url) => ({
-              status: 'READY',
-              originalUrl: url,
-            })),
+            shareMediaCategory,
+            ...(mediaItems.length > 0 ? { media: mediaItems } : {}),
           },
         },
         visibility: {
-          'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
+          'com.linkedin.ugc.MemberNetworkVisibility': visibilitySetting,
         },
       };
 

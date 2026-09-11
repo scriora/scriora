@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import { prisma } from 'scriora-core';
+import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 
 describe('Security & Gateway Robustness Tests', () => {
@@ -15,15 +15,21 @@ describe('Security & Gateway Robustness Tests', () => {
 
       // 2. Secret < 32 chars in production throws
       process.env.JWT_SECRET = 'short_secret';
-      expect(() => buildApp()).toThrow(/JWT_SECRET must be at least 32 characters long in production/);
+      expect(() => buildApp()).toThrow(
+        /JWT_SECRET must be at least 32 characters long in production/
+      );
 
       // 3. Missing or < 32 chars in development throws
       process.env.NODE_ENV = 'development';
       delete process.env.JWT_SECRET;
-      expect(() => buildApp()).toThrow(/JWT_SECRET environment variable is required and must be at least 32 characters long/);
+      expect(() => buildApp()).toThrow(
+        /JWT_SECRET environment variable is required and must be at least 32 characters long/
+      );
 
       process.env.JWT_SECRET = 'too_short';
-      expect(() => buildApp()).toThrow(/JWT_SECRET environment variable is required and must be at least 32 characters long/);
+      expect(() => buildApp()).toThrow(
+        /JWT_SECRET environment variable is required and must be at least 32 characters long/
+      );
     } finally {
       process.env.NODE_ENV = originalEnv;
       process.env.JWT_SECRET = originalSecret;

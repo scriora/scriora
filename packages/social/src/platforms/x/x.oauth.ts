@@ -22,7 +22,9 @@ export class XOAuth {
   }
 
   private get effectiveClientSecret(): string {
-    return this.clientSecret || process.env.X_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET || '';
+    return (
+      this.clientSecret || process.env.X_CLIENT_SECRET || process.env.TWITTER_CLIENT_SECRET || ''
+    );
   }
 
   public static generatePKCE(): { codeVerifier: string; codeChallenge: string } {

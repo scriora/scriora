@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Dashboard E2E Smoke Test', () => {
   test('renders the scriora dashboard page', async ({ page }) => {

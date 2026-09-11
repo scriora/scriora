@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   computePublicationFingerprint,
   createPublicationWithOutbox,
@@ -99,7 +99,9 @@ describe('Publication Service Unit Tests', () => {
 
   it('rejects if SocialAccount does not belong to the workspace', async () => {
     const mockDb = {
-      contentVariant: { findFirst: vi.fn().mockResolvedValue({ id: 'variant-1', workspaceId: 'ws-1' }) },
+      contentVariant: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'variant-1', workspaceId: 'ws-1' }),
+      },
       socialAccount: { findFirst: vi.fn().mockResolvedValue(null) },
       $transaction: vi.fn(),
     };

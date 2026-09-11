@@ -156,6 +156,90 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       expect(result.operationId).toBe('idemp-2');
     });
 
+    it('publishes post with images and custom CONNECTIONS visibility', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'urn:li:share:img_999' },
+      });
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'person_123',
+        text: 'Sharing new product design preview! 🎨',
+        mediaUrls: ['https://cdn.scriora.com/preview1.jpg', 'https://cdn.scriora.com/preview2.jpg'],
+        idempotencyKey: 'idemp-img',
+        fingerprint: 'fp-img',
+        metadata: {
+          accessToken: 'valid_access_token',
+          visibility: 'CONNECTIONS',
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(
+        calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareMediaCategory
+      ).toBe('IMAGE');
+      expect(calledPayload.specificContent['com.linkedin.ugc.ShareContent'].media).toHaveLength(2);
+      expect(calledPayload.visibility['com.linkedin.ugc.MemberNetworkVisibility']).toBe(
+        'CONNECTIONS'
+      );
+    });
+
+    it('publishes document carousel with title and DOCUMENT category', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'urn:li:share:doc_888' },
+      });
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'person_123',
+        text: 'Check out our 10-slide architectural playbook! 📑',
+        mediaUrls: ['https://cdn.scriora.com/playbook.pdf'],
+        idempotencyKey: 'idemp-doc',
+        fingerprint: 'fp-doc',
+        metadata: {
+          accessToken: 'valid_access_token',
+          documentTitle: 'Scriora Enterprise Architecture Playbook',
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(
+        calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareMediaCategory
+      ).toBe('DOCUMENT');
+      expect(
+        calledPayload.specificContent['com.linkedin.ugc.ShareContent'].media[0].title.text
+      ).toBe('Scriora Enterprise Architecture Playbook');
+    });
+
+    it('preserves Arabic text, emojis, and hashtags in shareCommentary', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'urn:li:share:arabic_777' },
+      });
+
+      const arabicPost =
+        'يسعدنا اليوم الإعلان عن إطلاق سكريورا رسمياً! 🚀\n\n' +
+        'المنصة مصممة لمعمارية المؤسسات وإدارة النمو.\n\n' +
+        '#بناء_في_العلن #ريادة_الأعمال #تقنية #الذكاء_الاصطناعي';
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'person_123',
+        text: arabicPost,
+        mediaUrls: [],
+        idempotencyKey: 'idemp-ar',
+        fingerprint: 'fp-ar',
+        metadata: { accessToken: 'valid_access_token' },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(
+        calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareCommentary.text
+      ).toBe(arabicPost);
+    });
+
     it('handles 429 Rate Limit error gracefully with retryAfterMs', async () => {
       const axiosError = new Error('Request failed with status code 429') as any;
       axiosError.isAxiosError = true;

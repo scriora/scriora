@@ -1,37 +1,37 @@
 {
-    "name":  "scriora-cli",
-    "version":  "0.1.0",
-    "private":  true,
-    "type":  "module",
-    "bin":  {
-                "scriora":  "./dist/cli.js"
-            },
-    "scripts":  {
-                    "dev":  "tsx src/cli.ts",
-                    "build":  "tsc",
-                    "lint":  "biome check src/",
-                    "lint:fix":  "biome check --write src/",
-                    "test":  "vitest run",
-                    "test:watch":  "vitest",
-                    "typecheck":  "tsc --noEmit"
-                },
-    "dependencies":  {
-                         "axios":  "^1.20.0",
-                         "chalk":  "^6.0.0",
-                         "commander":  "^15.0.0",
-                         "conf":  "^15.1.0",
-                         "inquirer":  "^14.2.2",
-                         "ora":  "^9.4.1",
-                         "zod":  "^4.6.2"
-                     },
-    "devDependencies":  {
-                            "@biomejs/biome":  "^2.5.13",
-                            "@types/inquirer":  "^9.0.10",
-                            "@types/node":  "^22.20.2",
-                            "tsx":  "^4.23.13",
-                            "typescript":  "^5.8.2",
-                            "vitest":  "^5.0.0",
-                            "@vitest/coverage-v8":  "^5.0.0"
-                        },
-    "packageManager":  "pnpm@11.21.0"
+  "name": "scriora-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "scriora": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.20.0",
+    "chalk": "^6.0.0",
+    "commander": "^15.0.0",
+    "conf": "^15.1.0",
+    "inquirer": "^14.2.2",
+    "ora": "^9.4.1",
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
+    "@types/inquirer": "^9.0.10",
+    "@types/node": "^22.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.8.2",
+    "vitest": "^5.0.0",
+    "@vitest/coverage-v8": "^5.0.0"
+  },
+  "packageManager": "pnpm@11.21.0"
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { MockLinkedInAdapter, platformRegistry } from 'scriora-social';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { processOutboxCommand } from '../../src/handlers/outbox-dispatcher.js';
 
 describe('Outbox Dispatcher Unit Tests', () => {
@@ -166,7 +166,9 @@ describe('Outbox Dispatcher Unit Tests', () => {
 
     const { platformRegistry } = await import('scriora-social');
     const adapter = platformRegistry.get('LINKEDIN' as any);
-    const publishSpy = vi.spyOn(adapter, 'publish').mockRejectedValueOnce(new Error('Network failure'));
+    const publishSpy = vi
+      .spyOn(adapter, 'publish')
+      .mockRejectedValueOnce(new Error('Network failure'));
 
     const result = await processOutboxCommand(mockDb as any, 'outbox-error');
     expect(result.success).toBe(false);

@@ -1,9 +1,9 @@
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PlatformError } from '../../src/errors/social.error.js';
 import { MockXAdapter } from '../../src/platforms/x/mock.adapter.js';
 import { XAdapter } from '../../src/platforms/x/x.adapter.js';
 import { XOAuth } from '../../src/platforms/x/x.oauth.js';
-import { PlatformError } from '../../src/errors/social.error.js';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
@@ -182,6 +182,85 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(secondCallPayload.reply).toEqual({
         in_reply_to_tweet_id: 'tweet_root_101',
       });
+    });
+
+    it('attaches media_ids, reply_settings, and replyToId to X API request', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { id: 'tweet_media_103' } },
+      });
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: 'Tweet with media and restricted replies! 📸',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-x-media',
+        fingerprint: 'fp-x-media',
+        metadata: {
+          accessToken: 'valid_x_token',
+          mediaIds: ['media_uploaded_001', 'media_uploaded_002'],
+          replySettings: 'mentionedUsers',
+          replyToId: 'tweet_parent_000',
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(calledPayload.media).toEqual({
+        media_ids: ['media_uploaded_001', 'media_uploaded_002'],
+      });
+      expect(calledPayload.reply_settings).toBe('mentionedUsers');
+      expect(calledPayload.reply).toEqual({
+        in_reply_to_tweet_id: 'tweet_parent_000',
+      });
+    });
+
+    it('attaches poll options and duration to root tweet', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { id: 'tweet_poll_104' } },
+      });
+
+      const pollConfig = {
+        options: ['TypeScript', 'Rust', 'Go'],
+        duration_minutes: 1440,
+      };
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: 'Which language is best for autonomous agent infrastructure? 🗳️',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-x-poll',
+        fingerprint: 'fp-x-poll',
+        metadata: {
+          accessToken: 'valid_x_token',
+          poll: pollConfig,
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(calledPayload.poll).toEqual(pollConfig);
+    });
+
+    it('preserves Arabic text, emojis, and hashtags in tweet body', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { id: 'tweet_ar_105' } },
+      });
+
+      const arabicTweet =
+        'سكريورا نظام تشغيل النمو الاجتماعي بالذكاء الاصطناعي ⚡\n\n#ريادة_الأعمال #برمجة #بناء_في_العلن';
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: arabicTweet,
+        mediaUrls: [],
+        idempotencyKey: 'idemp-x-ar',
+        fingerprint: 'fp-x-ar',
+        metadata: { accessToken: 'valid_x_token' },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(calledPayload.text).toBe(arabicTweet);
     });
 
     it('maps 429 Rate Limit from X API into retryable PlatformError', async () => {
