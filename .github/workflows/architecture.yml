@@ -1,0 +1,36 @@
+name: Architecture
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: arch-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  boundaries:
+    name: Boundaries & DB Schema
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/scriora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "11.21.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install --no-frozen-lockfile
+      - name: Validate Prisma Database Schema
+        run: pnpm db:validate
+      - name: Verify Module Boundaries & Isolation
+        run: pnpm verify:architecture

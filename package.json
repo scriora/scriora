@@ -1,0 +1,24 @@
+{
+  "name": "scriora",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:fix": "biome check --write .",
+    "db:generate": "pnpm --filter scriora-core db:generate",
+    "db:validate": "pnpm --filter scriora-core db:validate",
+    "verify:architecture": "node tooling/architecture/verify-architecture.mjs",
+    "clean": "turbo run clean"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
+    "turbo": "^2.4.4",
+    "typescript": "^5.8.2"
+  },
+  "packageManager": "pnpm@11.21.0"
+}

@@ -1,0 +1,22 @@
+{
+    "name":  "scriora-docs",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "astro dev",
+                    "build":  "astro build",
+                    "lint":  "biome check --no-errors-on-unmatched src/",
+                    "lint:fix":  "biome check --write --no-errors-on-unmatched src/",
+                    "preview":  "astro preview"
+                },
+    "dependencies":  {
+                         "@astrojs/starlight":  "^0.42.0",
+                         "astro":  "^7.3.2"
+                     },
+    "devDependencies":  {
+                            "@biomejs/biome":  "^2.5.13",
+                            "typescript":  "^7.0.2"
+                        },
+    "packageManager":  "pnpm@11.21.0"
+}

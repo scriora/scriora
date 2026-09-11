@@ -1,0 +1,55 @@
+name: Typecheck
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: typecheck-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "apps/web"
+            filter: "scriora-web"
+          - name: "apps/api"
+            filter: "scriora-api"
+          - name: "apps/worker"
+            filter: "scriora-worker"
+          - name: "packages/core"
+            filter: "scriora-core"
+          - name: "packages/social"
+            filter: "scriora-social"
+          - name: "packages/media"
+            filter: "scriora-media"
+          - name: "packages/agent"
+            filter: "scriora-agent"
+          - name: "packages/mcp"
+            filter: "scriora-mcp"
+          - name: "packages/cli"
+            filter: "scriora-cli"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6
+        with:
+          version: "11.21.0"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm db:generate
+      - name: Typecheck ${{ matrix.name }}
+        run: pnpm turbo run typecheck --filter=${{ matrix.filter }}

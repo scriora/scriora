@@ -1,0 +1,934 @@
+// scriora-core — Canonical Prisma Schema v1.0.0
+// Status: Canonical Production Specification
+// Owner: scriora-core
+// Reference: scriora-docs/architecture/SCRIORA_FINAL_DATABASE_CONTRACT.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum UserAuthProvider {
+  LOCAL
+  GOOGLE
+  GITHUB
+  MAGIC_LINK
+}
+
+enum WorkspacePurpose {
+  PERSONAL
+  WORK
+  CLIENT
+  AGENT
+}
+
+enum OperatingMode {
+  MANUAL
+  HYBRID
+  AUTONOMOUS
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+  EXTERNAL_APPROVER
+}
+
+enum SocialPlatform {
+  LINKEDIN
+  X
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+  THREADS
+  FACEBOOK
+  PINTEREST
+  BLUESKY
+  TELEGRAM
+}
+
+enum SocialAccountStatus {
+  PENDING_AUTH
+  CONNECTED
+  REFRESH_REQUIRED
+  REVOKED
+}
+
+enum ContentStatus {
+  DRAFT
+  READY
+  ARCHIVED
+}
+
+enum ContentVariantStatus {
+  DRAFT
+  READY
+  ARCHIVED
+}
+
+enum PublicationStatus {
+  DRAFT
+  SCHEDULED
+  READY
+  PROCESSING
+  PUBLISHED
+  FAILED
+  UNKNOWN_EXTERNAL_STATE
+  CANCELLED
+  REQUIRES_APPROVAL
+}
+
+enum PublishAttemptStatus {
+  RESERVED
+  DISPATCHING
+  PLATFORM_PENDING
+  SUCCEEDED
+  UNKNOWN_EXTERNAL_STATE
+  FAILED_PERMANENT
+}
+
+enum OutboxCommandStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+enum ApprovalResourceType {
+  PUBLICATION
+  MISSION
+  CAMPAIGN
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+  EXPIRED
+  CANCELLED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  AUDIO
+}
+
+enum MediaProcessingState {
+  REGISTERED
+  UPLOADING
+  UPLOADED
+  VALIDATING
+  PROCESSING
+  READY
+  FAILED_RETRYABLE
+  FAILED_PERMANENT
+  EXPIRED
+  DELETED
+}
+
+enum MediaSource {
+  USER_UPLOAD
+  IMPORT
+  SOCIAL_PLATFORM
+  AI_GENERATED
+  TRANSFORMED
+  EXTERNAL_REFERENCE
+}
+
+enum MissionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ABANDONED
+}
+
+enum GoalStatus {
+  IN_PROGRESS
+  ACHIEVED
+  MISSED
+  CANCELLED
+}
+
+enum StrategyStatus {
+  ACTIVE
+  SUPERSEDED
+  ARCHIVED
+}
+
+enum HypothesisStatus {
+  PROPOSED
+  TESTING
+  SUPPORTED
+  REFUTED
+  INCONCLUSIVE
+}
+
+enum ExperimentStatus {
+  PLANNED
+  RUNNING
+  CONCLUDED
+  ABORTED
+}
+
+enum VariantRole {
+  CONTROL
+  TREATMENT
+}
+
+enum ObservationWindow {
+  TWO_HOURS
+  SIX_HOURS
+  TWELVE_HOURS
+  TWENTY_FOUR_HOURS
+  FORTY_EIGHT_HOURS
+  SEVEN_DAYS
+}
+
+enum MetricStatus {
+  AVAILABLE
+  PERMISSION_DENIED
+  NOT_SUPPORTED
+  TEMPORARILY_UNAVAILABLE
+  ERROR
+}
+
+enum InsightClassification {
+  CORRELATED
+  CAUSAL
+}
+
+enum InsightStatus {
+  ACTIVE
+  SUPERSEDED
+  INVALIDATED
+}
+
+enum DecisionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+}
+
+enum AgentTaskStatus {
+  PENDING
+  PLANNING
+  WAITING_APPROVAL
+  EXECUTING
+  SUCCEEDED
+  FAILED_PERMANENT
+  CANCELLED
+}
+
+enum SkillExecutionStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. IDENTITY & TENANCY
+// ═══════════════════════════════════════════════════════════════════════════
+
+model User {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String           @unique
+  name             String
+  avatarUrl        String?          @map("avatar_url")
+  authProvider     UserAuthProvider @default(LOCAL) @map("auth_provider")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relationships
+  ownedWorkspaces  Workspace[]       @relation("WorkspaceOwner")
+  memberships      WorkspaceMember[]
+  createdContents  Content[]         @relation("ContentCreator")
+  publications     Publication[]     @relation("PublicationCreator")
+  missionsCreated  Mission[]         @relation("MissionCreator")
+  approvalsReq     Approval[]        @relation("ApprovalRequester")
+  approvalsDec     Approval[]        @relation("ApprovalDecider")
+
+  @@index([email])
+  @@map("users")
+}
+
+model Workspace {
+  id                   String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
+  slug                 String           @unique
+  purpose              WorkspacePurpose @default(WORK)
+  defaultOperatingMode OperatingMode    @default(MANUAL) @map("default_operating_mode")
+  ownerUserId          String           @map("owner_user_id") @db.Uuid
+  country              String?
+  timezone             String           @default("UTC")
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Foreign keys
+  owner                User             @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+
+  // Tenant Collections
+  members              WorkspaceMember[]
+  socialAccounts       SocialAccount[]
+  contents             Content[]
+  contentVariants      ContentVariant[]
+  publications         Publication[]
+  publishAttempts      PublishAttempt[]
+  outboxCommands       OutboxCommand[]
+  approvals            Approval[]
+  approvalTokens       ApprovalToken[]
+  mediaAssets          MediaAsset[]
+  missions             Mission[]
+  goals                Goal[]
+  strategies           Strategy[]
+  hypotheses           GrowthHypothesis[]
+  experiments          Experiment[]
+  experimentVariants   ExperimentContentVariant[]
+  analyticsSnapshots   AnalyticsSnapshot[]
+  evidenceRecords      EvidenceRecord[]
+  insights             Insight[]
+  decisions            Decision[]
+  memories             Memory[]
+  agentTasks           AgentTask[]
+
+  @@index([slug])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId   String        @map("workspace_id") @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  workspaceRole WorkspaceRole @map("workspace_role")
+  joinedAt      DateTime      @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. SOCIAL ACCOUNTS & SECURITY
+// ═══════════════════════════════════════════════════════════════════════════
+
+model SocialAccount {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String              @map("workspace_id") @db.Uuid
+  platform          SocialPlatform
+  externalAccountId String              @map("external_account_id") @db.VarChar(255)
+  accountName       String              @map("account_name") @db.VarChar(255)
+  status            SocialAccountStatus @default(PENDING_AUTH)
+  capabilities      Json                @default("{}")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  secretEnvelopes    SecretEnvelope[]
+  contentVariants    ContentVariant[]
+  publications       Publication[]
+  analyticsSnapshots AnalyticsSnapshot[]
+
+  @@unique([workspaceId, platform, externalAccountId], name: "uq_social_accounts_account")
+  @@index([workspaceId, status])
+  @@map("social_accounts")
+}
+
+model SecretEnvelope {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  socialAccountId String        @map("social_account_id") @db.Uuid
+  envelopeData    Bytes         @map("envelope_data")
+  keyId           String        @map("key_id") @db.VarChar(100)
+  algorithm       String        @default("AES-256-GCM") @db.VarChar(50)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+
+  @@index([socialAccountId])
+  @@map("secret_envelopes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. CONTENT & PUBLISHING PIPELINE
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Content {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String          @map("workspace_id") @db.Uuid
+  title           String?         @db.VarChar(255)
+  body            String?         @db.Text
+  status          ContentStatus   @default(DRAFT)
+  createdByUserId String?         @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User?           @relation("ContentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  variants        ContentVariant[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("contents")
+}
+
+model ContentVariant {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId        String           @map("workspace_id") @db.Uuid
+  contentId          String           @map("content_id") @db.Uuid
+  platform           SocialPlatform?
+  socialAccountId    String?          @map("social_account_id") @db.Uuid
+  body               String?          @db.Text
+  metadata           Json             @default("{}")
+  status             ContentVariantStatus @default(DRAFT)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  content            Content          @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  socialAccount      SocialAccount?   @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  publications       Publication[]
+  experimentBindings ExperimentContentVariant[]
+
+  @@index([contentId])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("content_variants")
+}
+
+model Publication {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String            @map("workspace_id") @db.Uuid
+  contentVariantId String            @map("content_variant_id") @db.Uuid
+  socialAccountId  String            @map("social_account_id") @db.Uuid
+  status           PublicationStatus @default(DRAFT)
+  scheduledAt      DateTime?         @map("scheduled_at") @db.Timestamptz(6)
+  timezone         String            @default("UTC") @db.VarChar(50)
+  publishedAt      DateTime?         @map("published_at") @db.Timestamptz(6)
+  externalPostId   String?           @map("external_post_id") @db.VarChar(255)
+  externalPostUrl  String?           @map("external_post_url") @db.Text
+  idempotencyKey   String            @unique @map("idempotency_key") @db.VarChar(255)
+  fingerprint      String            @db.Char(64)
+  createdByUserId  String?           @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentVariant     ContentVariant    @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
+  socialAccount      SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Restrict)
+  creator            User?             @relation("PublicationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  publishAttempts    PublishAttempt[]
+  outboxCommands     OutboxCommand[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  evidenceRecords    EvidenceRecord[]
+
+  @@index([workspaceId, scheduledAt])
+  @@index([socialAccountId, scheduledAt])
+  @@index([workspaceId, status])
+  @@map("publications")
+}
+
+model PublishAttempt {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String               @map("workspace_id") @db.Uuid
+  publicationId    String               @map("publication_id") @db.Uuid
+  attemptNumber    Int                  @default(1) @map("attempt_number")
+  status           PublishAttemptStatus @default(RESERVED)
+  idempotencyKey   String               @map("idempotency_key") @db.VarChar(255)
+  fingerprint      String               @db.Char(64)
+  startedAt        DateTime?            @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?            @map("completed_at") @db.Timestamptz(6)
+  externalId       String?              @map("external_id") @db.VarChar(255)
+  externalUrl      String?              @map("external_url") @db.Text
+  errorCode        String?              @map("error_code") @db.VarChar(100)
+  errorCategory    String?              @map("error_category") @db.VarChar(50)
+  errorMessage     String?              @map("error_message") @db.Text
+  retryable        Boolean              @default(false)
+  retryAfter       DateTime?            @map("retry_after") @db.Timestamptz(6)
+  responseMetadata Json                 @default("{}") @map("response_metadata")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publication      Publication          @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  outboxCommands   OutboxCommand[]
+
+  @@unique([publicationId, attemptNumber], name: "uq_publication_attempt")
+  @@index([publicationId, attemptNumber])
+  @@map("publish_attempts")
+}
+
+model OutboxCommand {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String              @map("workspace_id") @db.Uuid
+  publicationId    String              @map("publication_id") @db.Uuid
+  publishAttemptId String              @map("publish_attempt_id") @db.Uuid
+  commandType      String              @map("command_type") @db.VarChar(100)
+  payload          Json
+  status           OutboxCommandStatus @default(PENDING)
+  availableAt      DateTime            @default(now()) @map("available_at") @db.Timestamptz(6)
+  claimedAt        DateTime?           @map("claimed_at") @db.Timestamptz(6)
+  processedAt      DateTime?           @map("processed_at") @db.Timestamptz(6)
+  attempts         Int                 @default(0)
+  lastError        Json?               @default("{}") @map("last_error")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publication      Publication         @relation(fields: [publicationId], references: [id], onDelete: Cascade)
+  publishAttempt   PublishAttempt      @relation(fields: [publishAttemptId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@map("outbox_commands")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. HUMAN GOVERNANCE & APPROVALS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Approval {
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String               @map("workspace_id") @db.Uuid
+  resourceType      ApprovalResourceType @map("resource_type")
+  resourceId        String               @map("resource_id") @db.Uuid
+  resourceVersion   Int                  @default(1) @map("resource_version")
+  requestedByUserId String?              @map("requested_by_user_id") @db.Uuid
+  requestedAt       DateTime             @default(now()) @map("requested_at") @db.Timestamptz(6)
+  status            ApprovalStatus       @default(PENDING)
+  decidedByUserId   String?              @map("decided_by_user_id") @db.Uuid
+  decidedAt         DateTime?            @map("decided_at") @db.Timestamptz(6)
+  decisionNote      String?              @map("decision_note") @db.Text
+  requiredAt        DateTime?            @map("required_at") @db.Timestamptz(6)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester         User?                @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  decider           User?                @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  tokens            ApprovalToken[]
+  decisions         Decision[]
+
+  @@index([workspaceId, status])
+  @@index([resourceType, resourceId])
+  @@map("approvals")
+}
+
+model ApprovalToken {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  approvalId  String    @map("approval_id") @db.Uuid
+  tokenHash   String    @map("token_hash") @db.Char(64)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  nonce       String    @db.VarChar(64)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approval    Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("approval_tokens")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. MEDIA ASSETS
+// ═══════════════════════════════════════════════════════════════════════════
+
+model MediaAsset {
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  type            MediaType
+  mimeType        String               @map("mime_type") @db.VarChar(100)
+  fileSizeBytes   BigInt               @map("file_size_bytes")
+  width           Int?
+  height          Int?
+  durationSeconds Float?               @map("duration_seconds")
+  storageKey      String               @map("storage_key") @db.VarChar(500)
+  processingState MediaProcessingState @default(REGISTERED) @map("processing_state")
+  source          MediaSource          @default(USER_UPLOAD)
+  checksumSha256  String?              @map("checksum_sha256") @db.Char(64)
+  metadata        Json                 @default("{}")
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?            @map("deleted_at") @db.Timestamptz(6)
+
+  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([storageKey])
+  @@map("media_assets")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. AUTONOMOUS MISSIONS & GROWTH
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Mission {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String             @map("workspace_id") @db.Uuid
+  name            String             @db.VarChar(255)
+  description     String?            @db.Text
+  status          MissionStatus      @default(DRAFT)
+  startsAt        DateTime?          @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime?          @map("ends_at") @db.Timestamptz(6)
+  createdByUserId String?            @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator         User?              @relation("MissionCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  goals           Goal[]
+  strategies      Strategy[]
+  hypotheses      GrowthHypothesis[]
+  experiments     Experiment[]
+  evidenceRecords EvidenceRecord[]
+  insights        Insight[]
+  decisions       Decision[]
+  agentTasks      AgentTask[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, endsAt])
+  @@map("missions")
+}
+
+model Goal {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String     @map("workspace_id") @db.Uuid
+  missionId     String     @map("mission_id") @db.Uuid
+  name          String     @db.VarChar(255)
+  metricKey     String     @map("metric_key") @db.VarChar(100)
+  baselineValue Decimal    @default(0) @map("baseline_value") @db.Decimal(14, 4)
+  targetValue   Decimal    @map("target_value") @db.Decimal(14, 4)
+  currentValue  Decimal    @default(0) @map("current_value") @db.Decimal(14, 4)
+  unit          String     @default("COUNT") @db.VarChar(50)
+  startsAt      DateTime?  @map("starts_at") @db.Timestamptz(6)
+  endsAt        DateTime   @map("ends_at") @db.Timestamptz(6)
+  status        GoalStatus @default(IN_PROGRESS)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission       Mission    @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([missionId])
+  @@index([workspaceId, status])
+  @@map("goals")
+}
+
+model Strategy {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String             @map("workspace_id") @db.Uuid
+  missionId      String             @map("mission_id") @db.Uuid
+  name           String             @db.VarChar(255)
+  description    String             @db.Text
+  targetAudience Json               @default("{}") @map("target_audience")
+  contentPillars Json               @default("[]") @map("content_pillars")
+  toneProfile    Json               @default("{}") @map("tone_profile")
+  status         StrategyStatus     @default(ACTIVE)
+  version        Int                @default(1)
+  createdBy      String             @default("HUMAN") @map("created_by") @db.VarChar(50)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission        Mission            @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  hypotheses     GrowthHypothesis[]
+
+  @@unique([missionId, version], name: "uq_strategies_version")
+  @@index([missionId, version(sort: Desc)])
+  @@index([workspaceId, status])
+  @@map("strategies")
+}
+
+model GrowthHypothesis {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String           @map("workspace_id") @db.Uuid
+  missionId        String           @map("mission_id") @db.Uuid
+  strategyId       String           @map("strategy_id") @db.Uuid
+  key              String           @db.VarChar(50)
+  statement        String           @db.Text
+  rationale        String?          @db.Text
+  expectedOutcome  String?          @map("expected_outcome") @db.Text
+  successMetricKey String?          @map("success_metric_key") @db.VarChar(100)
+  expectedEffect   Decimal?         @map("expected_effect") @db.Decimal(8, 4)
+  status           HypothesisStatus @default(PROPOSED)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission          Mission          @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  strategy         Strategy         @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  experiments      Experiment[]
+
+  @@unique([missionId, key], name: "uq_hypotheses_key")
+  @@index([missionId, status])
+  @@index([strategyId])
+  @@map("growth_hypotheses")
+}
+
+model Experiment {
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String                     @map("workspace_id") @db.Uuid
+  missionId       String                     @map("mission_id") @db.Uuid
+  hypothesisId    String                     @map("hypothesis_id") @db.Uuid
+  name            String                     @db.VarChar(255)
+  description     String?                    @db.Text
+  design          Json                       @default("{}")
+  status          ExperimentStatus           @default(PLANNED)
+  startedAt       DateTime?                  @map("started_at") @db.Timestamptz(6)
+  endedAt         DateTime?                  @map("ended_at") @db.Timestamptz(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace       Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission         Mission                    @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  hypothesis      GrowthHypothesis           @relation(fields: [hypothesisId], references: [id], onDelete: Restrict)
+  contentVariants ExperimentContentVariant[]
+  evidenceRecords EvidenceRecord[]
+  insights        Insight[]
+
+  @@index([missionId, status])
+  @@index([hypothesisId])
+  @@index([startedAt(sort: Desc)])
+  @@map("experiments")
+}
+
+model ExperimentContentVariant {
+  experimentId     String         @map("experiment_id") @db.Uuid
+  contentVariantId String         @map("content_variant_id") @db.Uuid
+  workspaceId      String         @map("workspace_id") @db.Uuid
+  variantRole      VariantRole    @map("variant_role")
+  cohortTag        String?        @map("cohort_tag") @db.VarChar(50)
+  assignedAt       DateTime       @default(now()) @map("assigned_at") @db.Timestamptz(6)
+
+  experiment       Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  contentVariant   ContentVariant @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([experimentId, contentVariantId])
+  @@map("experiment_content_variants")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. ANALYTICS, EMPIRICAL EVIDENCE & MEMORY
+// ═══════════════════════════════════════════════════════════════════════════
+
+model AnalyticsSnapshot {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId        String            @map("workspace_id") @db.Uuid
+  socialAccountId    String?           @map("social_account_id") @db.Uuid
+  publicationId      String?           @map("publication_id") @db.Uuid
+  capturedAt         DateTime          @default(now()) @map("captured_at") @db.Timestamptz(6)
+  observationWindow  ObservationWindow @map("observation_window")
+  source             String            @db.VarChar(100)
+  status             String            @default("COMPLETE") @db.VarChar(50)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount      SocialAccount?    @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  publication        Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  metrics            AnalyticsMetric[]
+  evidenceRecords    EvidenceRecord[]
+
+  @@unique([publicationId, observationWindow], name: "uq_snapshots_window")
+  @@index([workspaceId, capturedAt(sort: Desc)])
+  @@index([publicationId, capturedAt(sort: Desc)])
+  @@map("analytics_snapshots")
+}
+
+model AnalyticsMetric {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  snapshotId   String            @map("snapshot_id") @db.Uuid
+  metricKey    String            @map("metric_key") @db.VarChar(100)
+  valueNumeric Decimal?          @map("value_numeric") @db.Decimal(18, 4)
+  valueText    String?           @map("value_text") @db.Text
+  status       MetricStatus      @default(AVAILABLE)
+  sourceMetric String?           @map("source_metric") @db.VarChar(100)
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  snapshot     AnalyticsSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@unique([snapshotId, metricKey], name: "uq_metrics_key")
+  @@map("analytics_metrics")
+}
+
+model EvidenceRecord {
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String             @map("workspace_id") @db.Uuid
+  missionId        String?            @map("mission_id") @db.Uuid
+  experimentId     String?            @map("experiment_id") @db.Uuid
+  publicationId    String?            @map("publication_id") @db.Uuid
+  metricSnapshotId String?            @map("metric_snapshot_id") @db.Uuid
+  evidenceType     String             @map("evidence_type") @db.VarChar(50)
+  value            Json
+  capturedAt       DateTime           @default(now()) @map("captured_at") @db.Timestamptz(6)
+  source           String             @db.VarChar(100)
+  confidence       Decimal            @default(1.0) @db.Decimal(5, 4)
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission          Mission?           @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  experiment       Experiment?        @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  publication      Publication?       @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  metricSnapshot   AnalyticsSnapshot? @relation(fields: [metricSnapshotId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, capturedAt(sort: Desc)])
+  @@index([experimentId, capturedAt(sort: Desc)])
+  @@index([publicationId, capturedAt(sort: Desc)])
+  @@map("evidence_records")
+}
+
+model Insight {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String                @map("workspace_id") @db.Uuid
+  missionId       String?               @map("mission_id") @db.Uuid
+  experimentId    String?               @map("experiment_id") @db.Uuid
+  title           String                @db.VarChar(255)
+  statement       String                @db.Text
+  evidenceSummary String                @map("evidence_summary") @db.Text
+  confidence      Decimal               @db.Decimal(5, 4)
+  classification  InsightClassification @default(CORRELATED)
+  status          InsightStatus         @default(ACTIVE)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission         Mission?              @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  experiment      Experiment?           @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  decisions       Decision[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([missionId, createdAt(sort: Desc)])
+  @@map("insights")
+}
+
+model Decision {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String         @map("workspace_id") @db.Uuid
+  missionId        String?        @map("mission_id") @db.Uuid
+  insightId        String?        @map("insight_id") @db.Uuid
+  decisionType     String         @map("decision_type") @db.VarChar(100)
+  decisionPayload  Json           @map("decision")
+  rationale        String         @db.Text
+  confidence       Decimal        @db.Decimal(5, 4)
+  requiresApproval Boolean        @default(false) @map("requires_approval")
+  approvalId       String?        @map("approval_id") @db.Uuid
+  status           DecisionStatus @default(PENDING)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  executedAt       DateTime?      @map("executed_at") @db.Timestamptz(6)
+
+  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission          Mission?       @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  insight          Insight?       @relation(fields: [insightId], references: [id], onDelete: SetNull)
+  approval         Approval?      @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([missionId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("decisions")
+}
+
+model Memory {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  category    String    @db.VarChar(50)
+  content     String    @db.Text
+  sourceType  String    @map("source_type") @db.VarChar(50)
+  sourceId    String?   @map("source_id") @db.Uuid
+  confidence  Decimal   @default(1.0) @db.Decimal(5, 4)
+  importance  Decimal?  @default(0.5) @db.Decimal(5, 4)
+  validFrom   DateTime? @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil  DateTime? @map("valid_until") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, category])
+  @@index([sourceType, sourceId])
+  @@index([workspaceId, validUntil])
+  @@map("memories")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. AGENT EXECUTION TELEMETRY
+// ═══════════════════════════════════════════════════════════════════════════
+
+model AgentTask {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String            @map("workspace_id") @db.Uuid
+  missionId        String?           @map("mission_id") @db.Uuid
+  taskType         String            @map("task_type") @db.VarChar(100)
+  parameters       Json              @default("{}")
+  status           AgentTaskStatus   @default(PENDING)
+  startedAt        DateTime?         @map("started_at") @db.Timestamptz(6)
+  completedAt      DateTime?         @map("completed_at") @db.Timestamptz(6)
+  errorDetails     Json?             @map("error_details")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission          Mission?          @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  skillExecutions  SkillExecution[]
+
+  @@index([workspaceId, status])
+  @@index([missionId])
+  @@map("agent_tasks")
+}
+
+model SkillExecution {
+  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  agentTaskId  String               @map("agent_task_id") @db.Uuid
+  skillName    String               @map("skill_name") @db.VarChar(100)
+  version      String               @db.VarChar(50)
+  status       SkillExecutionStatus @default(PENDING)
+  inputRef     Json                 @map("input_ref")
+  outputRef    Json?                @map("output_ref")
+  startedAt    DateTime?            @map("started_at") @db.Timestamptz(6)
+  completedAt  DateTime?            @map("completed_at") @db.Timestamptz(6)
+  errorDetails Json?                @map("error_details")
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  agentTask    AgentTask            @relation(fields: [agentTaskId], references: [id], onDelete: Cascade)
+  providerRuns ProviderRun[]
+
+  @@index([agentTaskId])
+  @@index([skillName, version])
+  @@map("skill_executions")
+}
+
+model ProviderRun {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skillExecutionId String         @map("skill_execution_id") @db.Uuid
+  provider         String         @db.VarChar(50)
+  modelId          String         @map("model_id") @db.VarChar(100)
+  promptTokens     Int            @default(0) @map("prompt_tokens")
+  completionTokens Int            @default(0) @map("completion_tokens")
+  costUsd          Decimal        @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  latencyMs        Int            @map("latency_ms")
+  success          Boolean        @default(true)
+  errorMessage     String?        @map("error_message") @db.Text
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  skillExecution   SkillExecution @relation(fields: [skillExecutionId], references: [id], onDelete: Cascade)
+
+  @@index([skillExecutionId])
+  @@index([provider, modelId])
+  @@map("provider_runs")
+}

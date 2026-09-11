@@ -1,0 +1,6 @@
+openapi: "3.1.0"
+info:
+  title: Scriora API
+  version: "1.0.0"
+  description: "Auto-generated from scriora-api. Do not edit manually."
+paths: {}

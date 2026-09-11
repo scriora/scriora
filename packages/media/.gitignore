@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.tsbuildinfo
+coverage/
+*.log
+
+test/__fixtures__/*.jpg
+test/__fixtures__/*.png
+test/__fixtures__/*.mp4
+test/__fixtures__/*.pdf

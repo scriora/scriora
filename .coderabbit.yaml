@@ -1,0 +1,90 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+tone_instructions: "You are a Staff Software Architect and Security Reviewer for Scriora, an enterprise social media orchestration and AI agent SaaS platform. Be rigorous, assertive, and constructive. Scrutinize every line for architectural boundaries, zero-trust security, race conditions, memory leaks, and RTL compatibility."
+early_access: false
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  request_changes_workflow: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  sequence_diagrams: true
+  
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_filters:
+    - "!node_modules/**"
+    - "!dist/**"
+    - "!.next/**"
+    - "!coverage/**"
+    - "!test-results/**"
+    - "!pnpm-lock.yaml"
+    - "!*.min.js"
+
+  path_instructions:
+    - path: "apps/web/**"
+      instructions: |
+        - Enforce Next.js 16 App Router & React 19 best practices.
+        - ARCHITECTURAL GATE: apps/web must NEVER import database clients or @prisma/client directly. All data fetching must go through typed API routes or Fastify gateway.
+        - UI & RTL: Verify CSS Logical Properties (e.g., margin-inline, padding-inline, inset-inline-start). Never use physical left/right.
+        - Accessibility: Verify ARIA attributes, semantic HTML, and keyboard navigability.
+        - Strict Zod validation on client forms and server actions.
+
+    - path: "apps/api/**"
+      instructions: |
+        - Enforce Fastify best practices and plugins.
+        - SECURITY: Validate all query strings, parameters, and bodies with strict Zod schemas.
+        - MULTI-TENANCY: Enforce strict workspace isolation (tenant_id / workspace_id) on all operations.
+        - Verify rate-limiting headers and authenticated session extraction.
+
+    - path: "apps/worker/**"
+      instructions: |
+        - Inngest background job auditing.
+        - Verify event idempotency keys to prevent double-processing.
+        - Ensure dead-letter queue strategies and exponential backoff on transient errors.
+
+    - path: "packages/core/**"
+      instructions: |
+        - Prisma 6 schema and domain contracts.
+        - Multi-tenant data isolation: All database queries must explicitly scope to workspace_id.
+        - Outbox Pattern: Ensure publication events write atomically with state updates.
+        - Zero circular dependencies across packages.
+
+    - path: "packages/social/**"
+      instructions: |
+        - Social platform adapter compliance with PlatformContract.
+        - SECURITY: OAuth tokens must always be encrypted at rest and never logged in plaintext.
+        - Handle API rate-limits and token expiration refresh flows gracefully.
+
+    - path: "packages/media/**"
+      instructions: |
+        - Media ingestion safety: Validate Magic Bytes / MIME types, never trust client-supplied extensions.
+        - Sharp & FFmpeg resource safety: Prevent memory exhaustion on large media uploads.
+        - Secure storage presigned URLs (S3/Cloudflare R2).
+
+    - path: "packages/agent/**"
+      instructions: |
+        - AI loop safety: Guard against prompt injection and unbounded execution loops.
+        - Enforce strict tool execution boundaries and skill registry contracts.
+        - Validate memory tier access controls.
+
+    - path: "packages/mcp/**"
+      instructions: |
+        - Model Context Protocol (MCP) server specification compliance.
+        - Safe schema declaration and input validation for all MCP tools.
+
+    - path: "packages/cli/**"
+      instructions: |
+        - Command input sanitization and non-zero exit codes on failure.
+        - Never persist raw authentication credentials in plain text.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  web_search:
+    enabled: true
