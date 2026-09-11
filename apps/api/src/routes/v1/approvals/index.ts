@@ -1,19 +1,25 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { ApprovalDecisionSchema, prisma } from 'scriora-core';
+import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
+const ApprovalTokenParamSchema = z.object({
+  token: z.string().min(1, 'Token parameter is required'),
+});
+
 export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Validate magic link and fetch preview (PUBLIC, zero-login per §14.3)
   fastify.get('/:token', async (request, reply) => {
-    const { token } = request.params as { token: string };
-    if (!token) {
+    const paramResult = ApprovalTokenParamSchema.safeParse(request.params);
+    if (!paramResult.success) {
       return reply
         .status(400)
         .send(err('MISSING_TOKEN', 'VALIDATION_ERROR', 'Token parameter is required', request.id));
     }
+    const { token } = paramResult.data;
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const tokenRecord = await prisma.approvalToken.findFirst({
@@ -94,7 +100,13 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
   // 2. Submit decision (PUBLIC via token per §14.3)
   fastify.post('/:token/decision', async (request, reply) => {
-    const { token } = request.params as { token: string };
+    const tokenResult = ApprovalTokenParamSchema.safeParse(request.params);
+    if (!tokenResult.success) {
+      return reply
+        .status(400)
+        .send(err('MISSING_TOKEN', 'VALIDATION_ERROR', 'Token parameter is required', request.id));
+    }
+    const { token } = tokenResult.data;
     const parseResult = ApprovalDecisionSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply

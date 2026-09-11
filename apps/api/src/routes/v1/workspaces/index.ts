@@ -1,4 +1,4 @@
-﻿import crypto from 'node:crypto';
+import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   CreateWorkspaceSchema,
@@ -15,6 +15,20 @@ const CreateApiKeySchema = z.object({
   name: z.string().min(1).max(100),
   scopes: z.array(z.string()).default(['posts:write', 'analytics:read']),
   expiresInDays: z.number().int().min(1).max(365).optional(),
+});
+
+const WsIdParamSchema = z.object({
+  wsId: z.string().uuid('Invalid wsId: must be a valid UUID'),
+});
+
+const MemberParamSchema = z.object({
+  wsId: z.string().uuid('Invalid wsId: must be a valid UUID'),
+  userId: z.string().uuid('Invalid userId: must be a valid UUID'),
+});
+
+const ApiKeyParamSchema = z.object({
+  wsId: z.string().uuid('Invalid wsId: must be a valid UUID'),
+  keyId: z.string().uuid('Invalid keyId: must be a valid UUID'),
 });
 
 export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
@@ -66,7 +80,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
           name,
           slug,
           purpose,
-          defaultOperatingMode: operatingMode === 'AGENTIC' ? 'AUTONOMOUS' : 'MANUAL',
+          defaultOperatingMode: operatingMode,
           requiresApproval,
           ownerUserId: userId,
           settings: description ? { description } : {},
@@ -89,6 +103,25 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
 
   // 3. Workspace Detail (nested under :wsId with verifyWorkspace middleware)
   fastify.register(async (scoped) => {
+    scoped.addHook('preValidation', async (request, reply) => {
+      const params = request.params as Record<string, string> | undefined;
+      if (params?.wsId) {
+        const result = WsIdParamSchema.safeParse(params);
+        if (!result.success) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'VALIDATION_ERROR',
+                'VALIDATION_ERROR',
+                'Invalid wsId: must be a valid UUID',
+                request.id
+              )
+            );
+        }
+      }
+    });
+
     scoped.addHook('preHandler', verifyWorkspace);
 
     // Get workspace detail
@@ -149,8 +182,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
           ...(parseResult.data.purpose ? { purpose: parseResult.data.purpose } : {}),
           ...(parseResult.data.operatingMode
             ? {
-                defaultOperatingMode:
-                  parseResult.data.operatingMode === 'AGENTIC' ? 'AUTONOMOUS' : 'MANUAL',
+                defaultOperatingMode: parseResult.data.operatingMode,
               }
             : {}),
           ...(parseResult.data.requiresApproval !== undefined
@@ -235,7 +267,20 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Remove Member
     scoped.delete('/:wsId/members/:userId', async (request, reply) => {
-      const { wsId, userId } = request.params as { wsId: string; userId: string };
+      const paramResult = MemberParamSchema.safeParse(request.params);
+      if (!paramResult.success) {
+        return reply
+          .status(400)
+          .send(
+            err(
+              'VALIDATION_ERROR',
+              'VALIDATION_ERROR',
+              'Invalid userId or wsId: must be a valid UUID',
+              request.id
+            )
+          );
+      }
+      const { wsId, userId } = paramResult.data;
       if (request.workspace!.role !== 'OWNER' && request.workspace!.role !== 'ADMIN') {
         return reply
           .status(403)
@@ -337,7 +382,20 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Revoke API Key
     scoped.delete('/:wsId/api-keys/:keyId', async (request, reply) => {
-      const { wsId, keyId } = request.params as { wsId: string; keyId: string };
+      const paramResult = ApiKeyParamSchema.safeParse(request.params);
+      if (!paramResult.success) {
+        return reply
+          .status(400)
+          .send(
+            err(
+              'VALIDATION_ERROR',
+              'VALIDATION_ERROR',
+              'Invalid keyId or wsId: must be a valid UUID',
+              request.id
+            )
+          );
+      }
+      const { wsId, keyId } = paramResult.data;
       await prisma.apiKey.updateMany({
         where: { id: keyId, workspaceId: wsId },
         data: { revokedAt: new Date() },

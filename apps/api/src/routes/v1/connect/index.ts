@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
 import { LinkedInAdapter, platformRegistry, type SocialPlatformType } from 'scriora-social';
-import { err } from '../../../lib/response.js';
+import { err, ok } from '../../../lib/response.js';
 
 // Ensure real LinkedIn adapter is registered in platform registry
 const realLinkedIn = new LinkedInAdapter();
@@ -12,12 +12,45 @@ try {
   // Already registered
 }
 
+function getMasterKey(): Buffer {
+  const masterKeyHex = process.env.MASTER_ENCRYPTION_KEY;
+  if (!masterKeyHex) {
+    throw new Error('MASTER_ENCRYPTION_KEY environment variable is required');
+  }
+  if (!/^[0-9a-fA-F]{64}$/.test(masterKeyHex)) {
+    throw new Error(
+      'MASTER_ENCRYPTION_KEY must be a valid 64-character hexadecimal string (32 bytes)'
+    );
+  }
+  return Buffer.from(masterKeyHex, 'hex');
+}
+
+function getAllowedRedirectOrigins(): string[] {
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
+  const origins = new Set<string>();
+  try {
+    origins.add(new URL(appUrl).origin);
+  } catch {
+    origins.add('http://localhost:3000');
+  }
+  origins.add('http://localhost:3000');
+  origins.add('http://127.0.0.1:3000');
+  if (process.env.CORS_ORIGINS) {
+    for (const origin of process.env.CORS_ORIGINS.split(',')) {
+      const trimmed = origin.trim();
+      if (trimmed) {
+        try {
+          origins.add(new URL(trimmed).origin);
+        } catch {}
+      }
+    }
+  }
+  return Array.from(origins);
+}
+
 // AES-256-GCM encryption helper for SecretEnvelope
-function encryptPayload(
-  data: Record<string, unknown>,
-  masterKeyHex?: string
-): { ciphertext: Uint8Array; keyId: string } {
-  const masterKey = masterKeyHex ? Buffer.from(masterKeyHex, 'hex') : crypto.randomBytes(32);
+function encryptPayload(data: Record<string, unknown>): { ciphertext: Uint8Array; keyId: string } {
+  const masterKey = getMasterKey();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', masterKey, iv);
 
@@ -79,7 +112,8 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       { expiresIn: '10m' }
     );
 
-    const callbackUrl = `http://localhost:3001/v1/connect/${platform}/callback`;
+    const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+    const callbackUrl = `${apiUrl}/v1/connect/${platform}/callback`;
     const { authorizationUrl } = await adapter.getAuthorizationUrl({
       workspaceId,
       redirectUri: callbackUrl,
@@ -163,25 +197,20 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
         );
     }
 
-    const callbackUrl = `http://localhost:3001/v1/connect/${platform}/callback`;
+    const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+    const callbackUrl = `${apiUrl}/v1/connect/${platform}/callback`;
     const tokens = await adapter.exchangeCodeForTokens({
       code: query.code,
       codeVerifier: decodedState.codeVerifier,
       redirectUri: callbackUrl,
     });
 
-    const masterKeyHex =
-      process.env.MASTER_ENCRYPTION_KEY ||
-      '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
-    const { ciphertext, keyId } = encryptPayload(
-      {
-        accessToken: tokens.accessToken,
-        refreshToken: tokens.refreshToken,
-        expiresIn: tokens.expiresIn,
-        accountName: tokens.accountName,
-      },
-      masterKeyHex
-    );
+    const { ciphertext, keyId } = encryptPayload({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
+      accountName: tokens.accountName,
+    });
 
     // Upsert SocialAccount and SecretEnvelope in database
     const socialAccount = await prisma.$transaction(async (tx) => {
@@ -224,17 +253,34 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     if (decodedState.postRedirectUri) {
-      const redirectTarget = new URL(decodedState.postRedirectUri);
+      const defaultDashboard = `${process.env.APP_URL ?? 'http://localhost:3000'}/dashboard`;
+      let redirectTarget: URL;
+      try {
+        const candidate = new URL(decodedState.postRedirectUri);
+        const allowedOrigins = getAllowedRedirectOrigins();
+        if (allowedOrigins.includes(candidate.origin)) {
+          redirectTarget = candidate;
+        } else {
+          redirectTarget = new URL(defaultDashboard);
+        }
+      } catch {
+        redirectTarget = new URL(defaultDashboard);
+      }
+
       redirectTarget.searchParams.set('connected', '1');
       redirectTarget.searchParams.set('accountId', socialAccount.id);
       redirectTarget.searchParams.set('platform', platformUpper);
       return reply.redirect(redirectTarget.toString());
     }
 
-    return reply.status(200).send({
-      success: true,
-      message: `Successfully connected ${platformUpper} account: ${tokens.accountName}`,
-      socialAccountId: socialAccount.id,
-    });
+    return reply.status(200).send(
+      ok(
+        {
+          message: `Successfully connected ${platformUpper} account: ${tokens.accountName}`,
+          socialAccountId: socialAccount.id,
+        },
+        request.id
+      )
+    );
   });
 };

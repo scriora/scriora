@@ -1,4 +1,4 @@
-﻿import * as scrioraCore from 'scriora-core';
+import * as scrioraCore from 'scriora-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 
@@ -150,12 +150,15 @@ describe('API Routes — Health & Publications', () => {
 
   it('initializes logger when not in test env', () => {
     const originalEnv = process.env.NODE_ENV;
+    const originalSecret = process.env.JWT_SECRET;
     try {
       process.env.NODE_ENV = 'production';
+      process.env.JWT_SECRET = 'valid_production_secret_32_characters_long_minimum!';
       const prodApp = buildApp();
       expect(prodApp).toBeDefined();
     } finally {
       process.env.NODE_ENV = originalEnv;
+      process.env.JWT_SECRET = originalSecret;
     }
   });
 });

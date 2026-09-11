@@ -1,5 +1,6 @@
-﻿import type { FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma, type WorkspaceRole } from 'scriora-core';
+import { z } from 'zod';
 import { err } from '../lib/response.js';
 
 declare module 'fastify' {
@@ -45,6 +46,21 @@ export async function verifyWorkspace(request: FastifyRequest, reply: FastifyRep
           'MISSING_WORKSPACE_ID',
           'VALIDATION_ERROR',
           'Target workspace ID is required in URL parameter or X-Workspace-Id header',
+          request.id
+        )
+      );
+    return;
+  }
+
+  const wsIdValidation = z.string().uuid().safeParse(targetWorkspaceId);
+  if (!wsIdValidation.success) {
+    reply
+      .status(400)
+      .send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          'Invalid workspace ID: must be a valid UUID',
           request.id
         )
       );

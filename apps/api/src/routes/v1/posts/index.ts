@@ -1,9 +1,14 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { PaginationQuerySchema, PublishPayloadSchema, prisma } from 'scriora-core';
+import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
+
+const PostParamsSchema = z.object({
+  postId: z.string().uuid('Invalid postId: must be a valid UUID'),
+});
 
 export const postRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', verifyAuth);
@@ -282,7 +287,20 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
 
   // 3. GET /v1/posts/:postId (Detail)
   fastify.get('/:postId', async (request, reply) => {
-    const { postId } = request.params as { postId: string };
+    const paramResult = PostParamsSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'VALIDATION_ERROR',
+            'VALIDATION_ERROR',
+            'Invalid postId: must be a valid UUID',
+            request.id
+          )
+        );
+    }
+    const { postId } = paramResult.data;
     const workspaceId = request.workspace!.id;
 
     const publication = await prisma.publication.findFirst({
@@ -311,7 +329,20 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
 
   // 4. POST /v1/posts/:postId/cancel
   fastify.post('/:postId/cancel', async (request, reply) => {
-    const { postId } = request.params as { postId: string };
+    const paramResult = PostParamsSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'VALIDATION_ERROR',
+            'VALIDATION_ERROR',
+            'Invalid postId: must be a valid UUID',
+            request.id
+          )
+        );
+    }
+    const { postId } = paramResult.data;
     const workspaceId = request.workspace!.id;
 
     const pub = await prisma.publication.findFirst({

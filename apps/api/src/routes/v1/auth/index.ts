@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import argon2 from 'argon2';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma } from 'scriora-core';
 import { z } from 'zod';
@@ -21,17 +22,26 @@ const MagicLinkRequestSchema = z.object({
   name: z.string().min(2).optional(),
 });
 
-function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${derivedKey}`;
+const VerifyQuerySchema = z.object({
+  token: z.string().min(1, 'Token parameter is required'),
+});
+
+const RefreshTokenBodySchema = z.object({
+  refreshToken: z.string().min(1, 'Refresh token is required'),
+});
+
+async function hashPassword(password: string): Promise<string> {
+  return argon2.hash(password, {
+    type: argon2.argon2id,
+  });
 }
 
-function verifyPassword(password: string, storedHash: string): boolean {
-  const [salt, key] = storedHash.split(':');
-  if (!salt || !key) return false;
-  const derivedKey = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(key, 'hex'), Buffer.from(derivedKey, 'hex'));
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  try {
+    return await argon2.verify(storedHash, password);
+  } catch {
+    return false;
+  }
 }
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -100,7 +110,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           message: 'Magic login link generated. Check your inbox.',
           email,
           ...(isDev
-            ? { devMagicLink: `http://localhost:3001/v1/auth/verify?token=${rawToken}` }
+            ? {
+                devMagicLink: `${process.env.APP_URL ?? 'http://localhost:3000'}/v1/auth/verify?token=${rawToken}`,
+              }
             : {}),
         },
         request.id
@@ -110,12 +122,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // 2. Verify Magic Link
   fastify.get('/verify', async (request, reply) => {
-    const { token } = request.query as { token?: string };
-    if (!token) {
+    const parseResult = VerifyQuerySchema.safeParse(request.query);
+    if (!parseResult.success) {
       return reply
         .status(400)
         .send(err('MISSING_TOKEN', 'VALIDATION_ERROR', 'Token parameter is required', request.id));
     }
+    const { token } = parseResult.data;
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const user = await prisma.user.findFirst({
@@ -194,13 +207,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .send(err('USER_EXISTS', 'CONFLICT', 'A user with this email already exists', request.id));
     }
 
+    const hashedPassword = password ? await hashPassword(password) : null;
+
     const user = await prisma.$transaction(async (tx) => {
       const newUser = await tx.user.create({
         data: {
           email,
           name,
           authProvider: 'LOCAL',
-          passwordHash: password ? hashPassword(password) : null,
+          passwordHash: hashedPassword,
           emailVerifiedAt: new Date(),
         },
       });
@@ -263,7 +278,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const { email, password } = parseResult.data;
     const user = await prisma.user.findUnique({ where: { email } });
 
-    if (!user || !user.passwordHash || !verifyPassword(password, user.passwordHash)) {
+    const isPasswordValid = user?.passwordHash
+      ? await verifyPassword(password, user.passwordHash)
+      : false;
+
+    if (!user || !user.passwordHash || !isPasswordValid) {
       return reply
         .status(401)
         .send(
@@ -310,7 +329,28 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // 5. Refresh token
   fastify.post('/refresh', async (request, reply) => {
     const cookieToken = request.cookies.refreshToken;
-    const bodyToken = (request.body as { refreshToken?: string } | undefined)?.refreshToken;
+    let bodyToken: string | undefined;
+
+    if (request.body !== undefined && request.body !== null) {
+      const bodyResult = RefreshTokenBodySchema.safeParse(request.body);
+      if (!bodyResult.success) {
+        if (!cookieToken) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'VALIDATION_ERROR',
+                'VALIDATION_ERROR',
+                'Invalid refresh token payload',
+                request.id
+              )
+            );
+        }
+      } else {
+        bodyToken = bodyResult.data.refreshToken;
+      }
+    }
+
     const token = cookieToken || bodyToken;
 
     if (!token) {

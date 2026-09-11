@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import { prisma } from 'scriora-core';
-import { err } from './lib/response.js';
+import { err, ok } from './lib/response.js';
 import { rateLimitPlugin } from './plugins/rate-limit.js';
 import { requestIdPlugin } from './plugins/request-id.js';
 import { swaggerPlugin } from './plugins/swagger.js';
@@ -16,35 +16,79 @@ import { workspaceRoutes } from './routes/v1/workspaces/index.js';
 
 export function buildApp(): FastifyInstance {
   const isTest = process.env.NODE_ENV === 'test';
+  const isProd = process.env.NODE_ENV === 'production';
+
+  // JWT Secret validation: production requires >= 32 chars, development requires >= 32 chars
+  let jwtSecret = process.env.JWT_SECRET;
+  if (isProd) {
+    if (!jwtSecret) {
+      throw new Error('JWT_SECRET environment variable is required in production');
+    }
+    if (jwtSecret.length < 32) {
+      throw new Error('JWT_SECRET must be at least 32 characters long in production');
+    }
+  } else if (!isTest) {
+    if (!jwtSecret || jwtSecret.length < 32) {
+      throw new Error(
+        'JWT_SECRET environment variable is required and must be at least 32 characters long'
+      );
+    }
+  } else {
+    // In test environment, fallback if unset
+    jwtSecret = jwtSecret || 'test_jwt_secret_at_least_32_characters_long_0987654321';
+  }
 
   const app = Fastify({
     logger: !isTest,
   });
 
   // 1. Core Plugins
-  app.register(cors, { origin: true, credentials: true });
+  const allowedOrigins: string[] = process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',')
+        .map((o) => o.trim())
+        .filter(Boolean)
+    : isProd
+      ? []
+      : ['http://localhost:3000', 'http://127.0.0.1:3000'];
+
+  app.register(cors, {
+    origin: allowedOrigins,
+    credentials: true,
+  });
   app.register(cookie);
   app.register(jwt, {
-    secret: process.env.JWT_SECRET || 'dev_secret_at_least_32_characters_long_1234567890',
+    secret: jwtSecret,
   });
   app.register(requestIdPlugin);
   app.register(swaggerPlugin);
   app.register(rateLimitPlugin);
 
   // 2. Health & Readiness Routes (§8.11)
-  app.get('/health', async () => ({
-    status: 'ok',
-    service: 'scriora-api',
-    version: '0.1.0',
-    timestamp: new Date().toISOString(),
-  }));
+  app.get('/health', async (_request, reply) => {
+    return reply.status(200).send({
+      status: 'ok',
+      service: 'scriora-api',
+      version: '0.1.0',
+      timestamp: new Date().toISOString(),
+    });
+  });
 
-  app.get('/ready', async (request, reply) => {
+  app.get('/ready', async (_request, reply) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
-      return { status: 'ready', database: 'connected' };
+      return reply.status(200).send({
+        status: 'ready',
+        service: 'scriora-api',
+        database: 'connected',
+        timestamp: new Date().toISOString(),
+      });
     } catch {
-      return reply.status(503).send({ status: 'not_ready', database: 'disconnected' });
+      return reply.status(503).send({
+        status: 'not_ready',
+        service: 'scriora-api',
+        database: 'disconnected',
+        timestamp: new Date().toISOString(),
+      });
     }
   });
 
@@ -62,10 +106,7 @@ export function buildApp(): FastifyInstance {
     try {
       const parsedBody = scrioraCore.CreatePublicationSchema.parse(request.body);
       const result = await scrioraCore.createPublicationWithOutbox(prisma, parsedBody);
-      return reply.status(201).send({
-        success: true,
-        data: result,
-      });
+      return reply.status(201).send(ok(result, request.id));
     } catch (e: unknown) {
       const errObj = e as { name?: string; message?: string; issues?: unknown[] } | null;
       if (errObj?.name === 'ZodError') {
@@ -73,6 +114,10 @@ export function buildApp(): FastifyInstance {
           success: false,
           error: 'VALIDATION_ERROR',
           details: errObj.issues,
+          meta: {
+            requestId: request.id,
+            timestamp: new Date().toISOString(),
+          },
         });
       }
       if (
@@ -82,11 +127,19 @@ export function buildApp(): FastifyInstance {
         return reply.status(404).send({
           success: false,
           error: errObj.message,
+          meta: {
+            requestId: request.id,
+            timestamp: new Date().toISOString(),
+          },
         });
       }
       return reply.status(500).send({
         success: false,
         error: errObj?.message || 'INTERNAL_SERVER_ERROR',
+        meta: {
+          requestId: request.id,
+          timestamp: new Date().toISOString(),
+        },
       });
     }
   });
