@@ -1,5 +1,11 @@
 import type { PrismaClient } from 'scriora-core';
-import { LinkedInAdapter, XAdapter, platformRegistry, type SocialPlatformType } from 'scriora-social';
+import {
+  LinkedInAdapter,
+  TelegramAdapter,
+  XAdapter,
+  platformRegistry,
+  type SocialPlatformType,
+} from 'scriora-social';
 import { z } from 'zod';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
@@ -12,6 +18,11 @@ function ensureAdaptersRegistered() {
   if (!platformRegistry.has('X')) {
     try {
       platformRegistry.register(new XAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('TELEGRAM')) {
+    try {
+      platformRegistry.register(new TelegramAdapter());
     } catch {}
   }
 }

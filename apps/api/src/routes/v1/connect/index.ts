@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
+import { z } from 'zod';
 import {
   LinkedInAdapter,
+  TelegramAdapter,
   platformRegistry,
   type SocialPlatformType,
   XAdapter,
@@ -20,6 +22,13 @@ try {
 const realX = new XAdapter();
 try {
   platformRegistry.register(realX);
+} catch {
+  // Already registered
+}
+
+const realTelegram = new TelegramAdapter();
+try {
+  platformRegistry.register(realTelegram);
 } catch {
   // Already registered
 }
@@ -322,5 +331,132 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
         request.id
       )
     );
+  });
+
+  // 3. Connect Telegram Bot / Channel
+  fastify.post('/telegram', async (request, reply) => {
+    const TelegramConnectSchema = z.object({
+      botToken: z.string().min(10, 'botToken must be valid'),
+      chatId: z.string().min(1, 'chatId is required (e.g. @channel or numeric chat ID)'),
+      channelTitle: z.string().optional(),
+    });
+
+    const parseResult = TelegramConnectSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          'Invalid Telegram connection payload',
+          request.id,
+          false,
+          parseResult.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }))
+        )
+      );
+    }
+
+    const { botToken, chatId, channelTitle } = parseResult.data;
+    const workspaceId =
+      (request.headers['x-workspace-id'] as string | undefined) ||
+      (request.query as { workspaceId?: string })?.workspaceId;
+
+    if (!workspaceId) {
+      return reply.status(400).send(
+        err('MISSING_WORKSPACE', 'VALIDATION_ERROR', 'x-workspace-id header or workspaceId query parameter is required', request.id)
+      );
+    }
+
+    try {
+      // 1. Verify bot token with Telegram API
+      const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+      const meData = (await meRes.json()) as { ok: boolean; result?: { username?: string; first_name?: string } };
+      if (!meData?.ok || !meData.result) {
+        return reply.status(400).send(
+          err('INVALID_BOT_TOKEN', 'VALIDATION_ERROR', 'Telegram bot token is invalid', request.id)
+        );
+      }
+
+      const botInfo = meData.result;
+      const botUsername = botInfo.username;
+
+      // 2. Verify chat / channel access
+      let verifiedTitle = channelTitle || `${botInfo.first_name} (@${botUsername})`;
+      try {
+        const chatRes = await fetch(
+          `https://api.telegram.org/bot${botToken}/getChat?chat_id=${encodeURIComponent(chatId)}`
+        );
+        const chatData = (await chatRes.json()) as { ok: boolean; result?: { title?: string } };
+        if (chatData?.ok && chatData.result?.title) {
+          verifiedTitle = chatData.result.title;
+        }
+      } catch {
+        // Fallback to provided title
+      }
+
+      // 3. Encrypt credentials with Master Key
+      const { ciphertext, keyId } = encryptPayload({
+        botToken,
+        chatId,
+        botUsername,
+      });
+
+      const adapter = platformRegistry.get('TELEGRAM');
+      const capabilitiesJson = JSON.parse(JSON.stringify(adapter.getCapabilities()));
+
+      // 4. Upsert SocialAccount & SecretEnvelope
+      const socialAccount = await prisma.$transaction(async (tx) => {
+        const account = await tx.socialAccount.upsert({
+          where: {
+            uq_social_accounts_account: {
+              workspaceId,
+              platform: 'TELEGRAM',
+              externalAccountId: chatId,
+            },
+          },
+          create: {
+            workspaceId,
+            platform: 'TELEGRAM',
+            externalAccountId: chatId,
+            accountName: verifiedTitle,
+            status: 'CONNECTED',
+            capabilities: capabilitiesJson,
+          },
+          update: {
+            accountName: verifiedTitle,
+            status: 'CONNECTED',
+            capabilities: capabilitiesJson,
+          },
+        });
+
+        await tx.secretEnvelope.deleteMany({ where: { socialAccountId: account.id } });
+        await tx.secretEnvelope.create({
+          data: {
+            socialAccountId: account.id,
+            envelopeData: Buffer.from(ciphertext),
+            keyId,
+            algorithm: 'AES-256-GCM',
+          },
+        });
+
+        return account;
+      });
+
+      return reply.status(200).send(
+        ok(
+          {
+            message: `Successfully connected TELEGRAM account: ${verifiedTitle}`,
+            socialAccountId: socialAccount.id,
+            chatId,
+            botUsername,
+          },
+          request.id
+        )
+      );
+    } catch (e: unknown) {
+      const errObj = e as { message?: string };
+      return reply.status(500).send(
+        err('TELEGRAM_CONNECT_FAILED', 'INTERNAL_ERROR', errObj.message || 'Failed to connect Telegram', request.id)
+      );
+    }
   });
 };
