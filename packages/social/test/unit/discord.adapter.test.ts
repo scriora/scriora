@@ -231,6 +231,33 @@ describe('DiscordAdapter Unit Tests', () => {
         retryable: false,
       });
     });
+
+    it('handles 403 Missing Permissions error with DISCORD_MISSING_PERMISSIONS', async () => {
+      mockedAxios.isAxiosError.mockReturnValue(true);
+      mockedAxios.post.mockRejectedValueOnce({
+        isAxiosError: true,
+        response: {
+          status: 403,
+          data: { code: 50013, message: 'Missing Permissions' },
+        },
+      });
+
+      await expect(
+        adapter.publish({
+          workspaceId: '550e8400-e29b-41d4-a716-446655440000',
+          accountId: 'ch-1',
+          text: 'Permission test',
+          mediaUrls: [],
+          idempotencyKey: 'idem-8',
+          fingerprint: '2'.repeat(64),
+          metadata: { botToken: 'token', channelId: 'ch-1' },
+        })
+      ).rejects.toMatchObject({
+        code: 'DISCORD_MISSING_PERMISSIONS',
+        category: 'AUTHORIZATION',
+        retryable: false,
+      });
+    });
   });
 
   describe('Deletion & Verification', () => {

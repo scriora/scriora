@@ -59,6 +59,8 @@ export interface DiscordMetadata {
   embedFooter?: string;
   embeds?: DiscordEmbed[];
   tts?: boolean;
+  allowEveryoneMention?: boolean;
+  threadName?: string;
 }
 
 export class DiscordAdapter implements PlatformAdapter {
@@ -192,6 +194,11 @@ export class DiscordAdapter implements PlatformAdapter {
     if (meta.tts !== undefined) {
       payload.tts = meta.tts;
     }
+
+    // Respect Discord permissions: restrict mentions by default unless explicitly permitted
+    payload.allowed_mentions = {
+      parse: meta.allowEveryoneMention ? ['everyone', 'roles', 'users'] : ['users'],
+    };
 
     // Ensure payload has at least content or embeds
     if (!payload.content && (!payload.embeds || (payload.embeds as unknown[]).length === 0)) {
@@ -332,11 +339,40 @@ export class DiscordAdapter implements PlatformAdapter {
         });
       }
 
-      if (status === 401 || status === 403) {
+      if (status === 401) {
         throw new PlatformError({
-          message: `Discord Authentication/Authorization failed: ${message}`,
+          message: `Discord Authentication failed (invalid bot token): ${message}`,
           code: 'DISCORD_AUTH_ERROR',
           category: 'AUTHENTICATION',
+          retryable: false,
+          platformCode: 'DISCORD',
+        });
+      }
+
+      if (status === 403) {
+        const discordCode = data?.code;
+        if (discordCode === 50013 || message.toLowerCase().includes('missing permissions')) {
+          throw new PlatformError({
+            message: `Discord Bot is missing required permissions in this channel (requires: Send Messages, Embed Links, or Attach Files): ${message}`,
+            code: 'DISCORD_MISSING_PERMISSIONS',
+            category: 'AUTHORIZATION',
+            retryable: false,
+            platformCode: 'DISCORD',
+          });
+        }
+        if (discordCode === 50001 || message.toLowerCase().includes('missing access')) {
+          throw new PlatformError({
+            message: `Discord Bot cannot access this channel (ensure bot has View Channels permission and channel is not private): ${message}`,
+            code: 'DISCORD_MISSING_ACCESS',
+            category: 'AUTHORIZATION',
+            retryable: false,
+            platformCode: 'DISCORD',
+          });
+        }
+        throw new PlatformError({
+          message: `Discord Authorization failed: ${message}`,
+          code: 'DISCORD_AUTH_ERROR',
+          category: 'AUTHORIZATION',
           retryable: false,
           platformCode: 'DISCORD',
         });
