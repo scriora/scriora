@@ -1,7 +1,20 @@
 import type { PrismaClient } from 'scriora-core';
-import { platformRegistry, type SocialPlatformType } from 'scriora-social';
+import { LinkedInAdapter, XAdapter, platformRegistry, type SocialPlatformType } from 'scriora-social';
 import { z } from 'zod';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
+
+function ensureAdaptersRegistered() {
+  if (!platformRegistry.has('LINKEDIN')) {
+    try {
+      platformRegistry.register(new LinkedInAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('X')) {
+    try {
+      platformRegistry.register(new XAdapter());
+    } catch {}
+  }
+}
 
 let envelopeServiceInstance: SecretEnvelopeService | null = null;
 function getEnvelopeService(): SecretEnvelopeService {
@@ -108,6 +121,7 @@ export async function processOutboxCommand(
 
   try {
     // 2. Resolve platform adapter from scriora-social
+    ensureAdaptersRegistered();
     const adapter = platformRegistry.get(platform);
 
     // Decrypt credentials if envelope is attached
