@@ -12,6 +12,7 @@ import { authRoutes } from './routes/v1/auth/index.js';
 import { connectRoutes } from './routes/v1/connect/index.js';
 import { postRoutes } from './routes/v1/posts/index.js';
 import { socialAccountRoutes } from './routes/v1/social-accounts/index.js';
+import { telegramWebhookRoutes } from './routes/v1/webhooks/telegram.js';
 import { workspaceRoutes } from './routes/v1/workspaces/index.js';
 
 export function buildApp(): FastifyInstance {
@@ -99,6 +100,7 @@ export function buildApp(): FastifyInstance {
   app.register(socialAccountRoutes, { prefix: '/v1/social-accounts' });
   app.register(postRoutes, { prefix: '/v1/posts' });
   app.register(approvalRoutes, { prefix: '/v1/approve' });
+  app.register(telegramWebhookRoutes, { prefix: '/v1/webhooks/telegram' });
 
   // Legacy route bridge for backward compatibility
   app.post('/api/v1/publications', async (request, reply) => {

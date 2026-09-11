@@ -19,7 +19,7 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 | **Mastodon** | ActivityPub / REST | Text, Media Attachments | Production |
 | **Pinterest** | OAuth 2.0 | Pins, Boards, Image/Video | Production |
 | **Reddit** | OAuth 2.0 | Subreddit text & link posts | Production |
-| **Telegram** | Bot API | Channel broadcast, Messages | Production |
+| **Telegram** | Bot API (C2 & Broadcast) | Text, Images, Media Albums, Interactive Inline Approvals, C2 Admin Bot | Production |
 | **Discord** | Webhook / Bot API | Rich Embeds, Announcements | Production |
 
 ---

@@ -1,0 +1,178 @@
+# 📱 Telegram Omnichannel & C2 Admin Bot Integration Guide
+
+> **Status:** Production-Ready | **Module:** `scriora-social`, `scriora-api`, `scriora-worker`  
+> **Security Level:** Zero-Trust Encrypted (AES-256-GCM Envelope)  
+> **Governance:** Human-in-the-Loop (§14 Interactive Approvals)
+
+---
+
+## 1. 🌐 Overview & Architectural Topology
+
+Scriora treats Telegram as both a **multi-destination publication platform** (Private Chat, Public/Private Channels, Supergroups/Forums) and a **real-time Command & Control (C2) remote management console**.
+
+```mermaid
+flowchart TD
+    subgraph Telegram Cloud
+        Admin["Authorized Admin Phone<br/>ID: 987654321"]
+        Bot["@YourBrandBot"]
+        Channel["Telegram Channel<br/>ID: -1001234567890"]
+        Group["Telegram Supergroup<br/>ID: -1009876543210"]
+    end
+
+    subgraph Scriora Gateway & Security Layer
+        Webhook["POST /v1/webhooks/telegram"]
+        C2Service["TelegramBotService (C2 Engine)"]
+        ZeroTrust{"Zero-Trust Guard<br/>isAuthorized(from.id)"}
+    end
+
+    subgraph Core & Persistence
+        DB[(PostgreSQL + Prisma)]
+        Envelopes["Secret Envelopes<br/>(AES-256-GCM)"]
+        Outbox["Transactional Outbox Queue"]
+    end
+
+    subgraph Dispatcher
+        Worker["Outbox Dispatcher Daemon"]
+        TGAdapter["TelegramAdapter (scriora-social)"]
+    end
+
+    Admin -->|Commands: /status, /post, /accounts| Bot
+    Bot -->|Webhook or Long-Polling| C2Service
+    C2Service --> ZeroTrust
+    ZeroTrust -->|Authorized| DB
+    ZeroTrust -->|Reject Others| Admin
+
+    DB --> Outbox
+    Outbox --> Worker
+    Worker --> TGAdapter
+    TGAdapter -->|Broadcast Media/Text| Channel
+    TGAdapter -->|Broadcast Media/Text| Group
+    TGAdapter -->|Deliver Confirmation| Admin
+```
+
+---
+
+## 2. 🔐 Zero-Trust Security & Key Encryption
+
+All Telegram credentials, bot tokens, and destination identifiers are stored in PostgreSQL using **AES-256-GCM Envelope Encryption** (`secret_envelopes` table).
+
+* **Master Key:** Sourced from `MASTER_ENCRYPTION_KEY` (32 bytes hex-encoded).
+* **Cryptographic Vector:** Every envelope generates a fresh 96-bit (12-byte) initialization vector (`IV`) and a 128-bit authentication tag (`authTag`).
+* **Authorized Caller Whitelist:** The C2 engine enforces `isAuthorized(senderId)`. Any user outside the configured `TELEGRAM_ADMIN_CHAT_ID` receives a rejection notification and cannot trigger actions.
+
+```typescript
+// packages/social/src/platforms/telegram/telegram-bot.service.ts
+public isAuthorized(senderId: string | number): boolean {
+  if (!this.adminChatId) return true;
+  return String(senderId) === this.adminChatId;
+}
+```
+
+---
+
+## 3. 🎯 Multi-Destination Ingestion & Mapping
+
+Telegram separates targets into distinct chat types:
+
+| Target Type | External Account ID Format | Bot Permissions Needed | Example Record in DB |
+|---|---|---|---|
+| **Private Chat** | Positive integer (e.g. `987654321`) | None (User initiates `/start`) | `Ameer (@YourTelegramHandle)` |
+| **Public Channel** | Public username (e.g. `@my_channel`) | Admin (`can_post_messages`) | `Channel - @my_channel` |
+| **Private Channel** | Negative 13-digit integer (`-100...`) | Admin (`can_post_messages`) | `Channel - -1001234567890` |
+| **Supergroup / Forum** | Negative 13-digit integer (`-100...`) | Member / Admin (`can_send_messages`) | `Group - -1009876543210` |
+
+### Connection Endpoint
+To attach any Telegram destination to a workspace, call:
+```http
+POST /v1/connect/telegram
+Content-Type: application/json
+x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
+
+{
+  "botToken": "YOUR_BOT_TOKEN",
+  "chatId": "-1001234567890",
+  "channelTitle": "قناة تيليجرام الرسمية"
+}
+```
+
+---
+
+## 4. 🎮 Interactive Admin Commands (C2 Bot)
+
+The authorized administrator can manage Scriora directly from the Telegram chat interface:
+
+| Command | Action | System Response |
+|---|---|---|
+| `/start` or `/help` | Displays interactive onboarding menu | Available command list and security status badge |
+| `/status` | Real-time health check | Workspace name, connected platforms, outbox queue size |
+| `/accounts` | Lists connected destinations | Displays all active LinkedIn, Channel, and Group accounts |
+| `/post <text>` | **Chat-to-Publish** | Publishes post with media to all connected destinations in parallel |
+
+---
+
+## 5. 🛡️ Two-Way Human Governance (§14 Approvals)
+
+When a post is scheduled by an AI agent or requires human validation before going live (`requiresApproval = true`):
+
+1. Scriora issues a secure `ApprovalToken` (72h expiration, single-use SHA-256 hash).
+2. `TelegramBotService.sendApprovalRequest` sends a rich preview card to the administrator's phone:
+
+```text
+🛡️ طلب اعتماد منشور جديد (Human Governance §14)
+
+📋 المنصة: TELEGRAM & LINKEDIN
+🏷️ العنوان: إعلان إطلاق المنتج الجديد
+⚡ الموعد: فوري عند الاعتماد
+
+📝 نص المنشور:
+> نعلن اليوم عن إطلاق الإصدار الثاني من سكريورا للأتمتة الذكية...
+
+[ ✅ اعتماد ونشر فوري ]  [ ❌ رفض وإلغاء ]
+```
+
+3. When the user taps **[ ✅ اعتماد ونشر فوري ]**:
+   - The bot receives a `callback_query` (`approve:<token>`).
+   - The token is verified and marked consumed (`usedAt = now()`).
+   - The publication state transitions to `READY`.
+   - The Outbox Dispatcher fires immediately, publishing across all channels.
+   - The Telegram message dynamically updates to display: `القرار المتخذ: ✅ تم الاعتماد والنشر بنجاح 🚀`.
+
+---
+
+## 6. ⚙️ Operating Modes: Webhook vs Long-Polling
+
+Scriora supports two operational modes:
+
+### Mode A: Production Webhook (`apps/api`)
+- Endpoint: `POST /v1/webhooks/telegram`
+- Validates `x-telegram-bot-api-secret-token` against `TELEGRAM_WEBHOOK_SECRET`.
+- Configured once via:
+  ```bash
+  curl -F "url=https://api.yourdomain.com/v1/webhooks/telegram" \
+       -F "secret_token=YOUR_WEBHOOK_SECRET" \
+       https://api.telegram.org/bot<TOKEN>/setWebhook
+  ```
+
+### Mode B: Standalone / Development Long-Polling Daemon
+- Runs locally without requiring public domain or tunnel:
+  ```bash
+  node --env-file=.env scratch/run_telegram_c2_daemon.mjs
+  ```
+- Continuously polls `getUpdates` with adaptive timeout and zero message drop.
+
+---
+
+## 7. 🧪 Verification & Test Suite
+
+Scriora includes dedicated unit and integration tests:
+
+```bash
+# Run unit tests in scriora-social
+pnpm --filter scriora-social test
+
+# Run API gateway tests
+pnpm --filter scriora-api test
+
+# Full typecheck across the monorepo
+pnpm turbo run typecheck
+```
