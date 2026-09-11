@@ -112,12 +112,12 @@ describe('Security & Gateway Robustness Tests', () => {
     const app = buildApp();
 
     let savedUser: any = null;
-    vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }: any) => {
+    (vi.spyOn(prisma.user, 'findUnique') as any).mockImplementation(async ({ where }: any) => {
       if (where.email === 'new@scriora.io') return savedUser;
       return null;
     });
 
-    vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
+    (vi.spyOn(prisma, '$transaction') as any).mockImplementation(async (callback: any) => {
       return callback({
         user: {
           create: vi.fn().mockImplementation(async ({ data }: any) => {
