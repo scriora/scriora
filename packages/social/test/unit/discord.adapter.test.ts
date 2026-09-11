@@ -260,6 +260,93 @@ describe('DiscordAdapter Unit Tests', () => {
     });
   });
 
+  describe('Power Features (Auto-Pin, Auto-Reactions, Threads)', () => {
+    it('executes auto-pin and auto-reactions when publishing with Bot credentials', async () => {
+      // 1. Publish message response
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 'msg-999',
+          channel_id: 'chan-111',
+          guild_id: 'guild-222',
+        },
+      });
+      // 2. Auto-pin PUT response
+      mockedAxios.put.mockResolvedValueOnce({ status: 204 });
+      // 3. Auto-reaction 1 PUT response
+      mockedAxios.put.mockResolvedValueOnce({ status: 204 });
+      // 4. Auto-reaction 2 PUT response
+      mockedAxios.put.mockResolvedValueOnce({ status: 204 });
+
+      const res = await adapter.publish({
+        workspaceId: '550e8400-e29b-41d4-a716-446655440000',
+        accountId: 'chan-111',
+        text: 'Announcement with reactions and pin!',
+        mediaUrls: [],
+        idempotencyKey: 'idem-power-1',
+        fingerprint: '3'.repeat(64),
+        metadata: {
+          botToken: 'bot-secret-token',
+          channelId: 'chan-111',
+          pinMessage: true,
+          autoReactions: ['🔥', '🚀'],
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.platformMetadata?.pinned).toBe(true);
+      expect(res.platformMetadata?.reactions).toEqual(['🔥', '🚀']);
+
+      // Verify pin call
+      expect(mockedAxios.put).toHaveBeenCalledWith(
+        'https://discord.com/api/v10/channels/chan-111/pins/msg-999',
+        {},
+        expect.objectContaining({
+          headers: { Authorization: 'Bot bot-secret-token' },
+        })
+      );
+
+      // Verify reactions call
+      expect(mockedAxios.put).toHaveBeenCalledWith(
+        `https://discord.com/api/v10/channels/chan-111/messages/msg-999/reactions/${encodeURIComponent('🔥')}/@me`,
+        {},
+        expect.any(Object)
+      );
+      expect(mockedAxios.put).toHaveBeenCalledWith(
+        `https://discord.com/api/v10/channels/chan-111/messages/msg-999/reactions/${encodeURIComponent('🚀')}/@me`,
+        {},
+        expect.any(Object)
+      );
+    });
+
+    it('gracefully degrades if pin or reaction fails due to missing permissions', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          id: 'msg-1000',
+          channel_id: 'chan-111',
+        },
+      });
+      // Pin fails with 403
+      mockedAxios.put.mockRejectedValueOnce(new Error('Discord 403 Missing Permissions'));
+
+      const res = await adapter.publish({
+        workspaceId: '550e8400-e29b-41d4-a716-446655440000',
+        accountId: 'chan-111',
+        text: 'Announcement with failing pin permission',
+        mediaUrls: [],
+        idempotencyKey: 'idem-power-2',
+        fingerprint: '4'.repeat(64),
+        metadata: {
+          botToken: 'bot-secret-token',
+          channelId: 'chan-111',
+          pinMessage: true,
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.platformMetadata?.pinned).toBe(false);
+    });
+  });
+
   describe('Deletion & Verification', () => {
     it('deletes message via webhook delete endpoint', async () => {
       mockedAxios.delete.mockResolvedValueOnce({ status: 204 });

@@ -61,6 +61,8 @@ export interface DiscordMetadata {
   tts?: boolean;
   allowEveryoneMention?: boolean;
   threadName?: string;
+  pinMessage?: boolean;
+  autoReactions?: string[];
 }
 
 export class DiscordAdapter implements PlatformAdapter {
@@ -72,7 +74,7 @@ export class DiscordAdapter implements PlatformAdapter {
       supportsImage: true,
       supportsVideo: true,
       supportsCarousel: false,
-      supportsThreads: false,
+      supportsThreads: true,
       supportsScheduling: true,
       supportsMetrics: false,
       supportsWebhooks: true,
@@ -81,7 +83,19 @@ export class DiscordAdapter implements PlatformAdapter {
   }
 
   public async publish(request: PublishRequest): Promise<PublishResult> {
-    const meta = (request.metadata || {}) as DiscordMetadata;
+    const rawMeta = (request.metadata || {}) as DiscordMetadata & {
+      options?: DiscordMetadata | { options?: DiscordMetadata };
+    };
+    const nestedOptions = (
+      rawMeta.options && typeof rawMeta.options === 'object' && 'options' in rawMeta.options
+        ? (rawMeta.options as { options?: DiscordMetadata }).options
+        : rawMeta.options
+    ) as DiscordMetadata | undefined;
+
+    const meta: DiscordMetadata = {
+      ...(nestedOptions || {}),
+      ...rawMeta,
+    };
 
     // 1. Resolve credentials
     const webhookUrl =
@@ -256,15 +270,92 @@ export class DiscordAdapter implements PlatformAdapter {
         }
       }
 
+      let isPinned = false;
+      const reactedEmojis: string[] = [];
+      let threadId: string | undefined;
+
+      const effectiveChannelId = channelId || String(responseData.channel_id || '');
+      const effectiveMessageId = externalPostId;
+
+      // Execute Power Actions if Bot Token and Channel ID are available
+      if (
+        botToken &&
+        effectiveChannelId &&
+        effectiveMessageId &&
+        !effectiveMessageId.startsWith('webhook-')
+      ) {
+        // 1. Auto-Pin message if requested (requires PIN_MESSAGES or MANAGE_MESSAGES)
+        if (meta.pinMessage) {
+          try {
+            await axios.put(
+              `https://discord.com/api/v10/channels/${effectiveChannelId}/pins/${effectiveMessageId}`,
+              {},
+              {
+                headers: { Authorization: `Bot ${botToken}` },
+                timeout: 10000,
+              }
+            );
+            isPinned = true;
+          } catch {
+            // Graceful degradation: lack of pin permission does not fail the published post
+          }
+        }
+
+        // 2. Auto-Reactions if requested (requires ADD_REACTIONS)
+        if (Array.isArray(meta.autoReactions) && meta.autoReactions.length > 0) {
+          for (const emoji of meta.autoReactions) {
+            try {
+              const cleanEmoji = emoji.trim();
+              if (cleanEmoji) {
+                await axios.put(
+                  `https://discord.com/api/v10/channels/${effectiveChannelId}/messages/${effectiveMessageId}/reactions/${encodeURIComponent(cleanEmoji)}/@me`,
+                  {},
+                  {
+                    headers: { Authorization: `Bot ${botToken}` },
+                    timeout: 8000,
+                  }
+                );
+                reactedEmojis.push(cleanEmoji);
+              }
+            } catch {
+              // Graceful degradation: lack of reaction permission does not fail the published post
+            }
+          }
+        }
+
+        // 3. Thread creation if requested (requires CREATE_PUBLIC_THREADS)
+        if (meta.threadName) {
+          try {
+            const threadResponse = await axios.post(
+              `https://discord.com/api/v10/channels/${effectiveChannelId}/messages/${effectiveMessageId}/threads`,
+              { name: meta.threadName.slice(0, 100) },
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bot ${botToken}`,
+                },
+                timeout: 10000,
+              }
+            );
+            threadId = (threadResponse.data as Record<string, unknown>)?.id as string | undefined;
+          } catch {
+            // Graceful degradation: lack of thread permission does not fail the published post
+          }
+        }
+      }
+
       return {
         status: 'SUCCEEDED',
         externalPostId,
         externalPostUrl: externalPostUrl || undefined,
         platformMetadata: {
-          channelId,
+          ...responseData,
+          channelId: effectiveChannelId,
           isWebhook: Boolean(webhookUrl),
           discordMessageId: externalPostId,
-          ...responseData,
+          pinned: isPinned,
+          reactions: reactedEmojis,
+          threadId,
         },
         publishedAt: new Date(),
         operationId: `discord-publish-${Date.now()}`,

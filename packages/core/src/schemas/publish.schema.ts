@@ -84,6 +84,14 @@ export const DiscordOptionsSchema = z.object({
   username: z.string().max(80).optional(),
   /** Override avatar URL for webhook posts */
   avatarUrl: z.string().url().optional(),
+  /** Automatically pin the message after posting (requires PIN_MESSAGES permission) */
+  pinMessage: z.boolean().optional(),
+  /** List of emojis to auto-react to the post (requires ADD_REACTIONS permission) */
+  autoReactions: z.array(z.string().min(1).max(64)).max(10).optional(),
+  /** Optional thread name to create under the published message */
+  threadName: z.string().min(1).max(100).optional(),
+  /** Explicitly allow @everyone and role mentions */
+  allowEveryoneMention: z.boolean().optional(),
 });
 
 export const PlatformOptionsSchema = z.discriminatedUnion('platform', [

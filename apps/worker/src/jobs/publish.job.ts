@@ -143,6 +143,12 @@ export const publishJob = inngest.createFunction(
       const payload = outboxRecord.payload as Record<string, unknown>;
 
       try {
+        const optionsObj =
+          payload.options && typeof payload.options === 'object'
+            ? (((payload.options as Record<string, unknown>).options as Record<string, unknown>) ??
+              payload.options)
+            : {};
+
         const result = await adapter.publish({
           workspaceId: pub.workspaceId,
           accountId: account.externalAccountId,
@@ -158,6 +164,7 @@ export const publishJob = inngest.createFunction(
             chatId: account.externalAccountId,
             externalAccountId: account.externalAccountId,
             options: payload.options,
+            ...(typeof optionsObj === 'object' && optionsObj !== null ? optionsObj : {}),
           },
         });
 

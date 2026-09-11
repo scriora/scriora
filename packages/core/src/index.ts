@@ -22,6 +22,7 @@ export {
   ObservationWindow,
   OperatingMode,
   OutboxCommandStatus,
+  Prisma,
   PublicationStatus,
   PublishAttemptStatus,
   SkillExecutionStatus,

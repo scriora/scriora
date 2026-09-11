@@ -1,4 +1,4 @@
-import type { PrismaClient } from 'scriora-core';
+import type { Prisma, PrismaClient } from 'scriora-core';
 import {
   DiscordAdapter,
   LinkedInAdapter,
@@ -43,12 +43,14 @@ function getEnvelopeService(): SecretEnvelopeService {
 
 export const OutboxPayloadSchema = z
   .object({
-    platform: z.string().min(1, 'platform is required'),
+    workspaceId: z.string().uuid().optional(),
     socialAccountId: z.string().min(1, 'socialAccountId is required'),
-    body: z.string().nullable().optional(),
-    mediaUrls: z.array(z.string()).optional(),
-    idempotencyKey: z.string().min(1, 'idempotencyKey is required'),
-    fingerprint: z.string().min(1, 'fingerprint is required'),
+    platform: z.string(),
+    body: z.string().optional(),
+    mediaUrls: z.array(z.string().url()).optional(),
+    idempotencyKey: z.string(),
+    fingerprint: z.string(),
+    options: z.unknown().optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .passthrough();
@@ -59,6 +61,7 @@ export interface DispatchResult {
   success: boolean;
   externalPostId?: string | undefined;
   externalPostUrl?: string | undefined;
+  platformMetadata?: Record<string, unknown> | undefined;
   error?: string | undefined;
 }
 
@@ -107,10 +110,12 @@ export async function processOutboxCommand(
       },
     });
 
-    await db.publication.update({
-      where: { id: command.publicationId },
-      data: { status: 'FAILED' },
-    });
+    if (db.publication && command.publicationId) {
+      await db.publication.update({
+        where: { id: command.publicationId },
+        data: { status: 'FAILED' },
+      });
+    }
 
     await db.outboxCommand.update({
       where: { id: outboxCommandId },
@@ -194,6 +199,7 @@ export async function processOutboxCommand(
               status: 'SUCCEEDED',
               externalId: result.externalPostId ?? null,
               externalUrl: result.externalPostUrl ?? null,
+              responseMetadata: (result.platformMetadata as Prisma.InputJsonValue) ?? undefined,
               completedAt: new Date(),
             },
           });
@@ -222,6 +228,7 @@ export async function processOutboxCommand(
         success: true,
         externalPostId: result.externalPostId,
         externalPostUrl: result.externalPostUrl,
+        platformMetadata: result.platformMetadata,
       };
     }
 
@@ -231,10 +238,12 @@ export async function processOutboxCommand(
       data: { status: 'FAILED_PERMANENT' },
     });
 
-    await db.publication.update({
-      where: { id: command.publicationId },
-      data: { status: 'FAILED' },
-    });
+    if (db.publication && command.publicationId) {
+      await db.publication.update({
+        where: { id: command.publicationId },
+        data: { status: 'FAILED' },
+      });
+    }
 
     await db.outboxCommand.update({
       where: { id: outboxCommandId },
@@ -253,10 +262,12 @@ export async function processOutboxCommand(
       },
     });
 
-    await db.publication.update({
-      where: { id: command.publicationId },
-      data: { status: 'FAILED' },
-    });
+    if (db.publication && command.publicationId) {
+      await db.publication.update({
+        where: { id: command.publicationId },
+        data: { status: 'FAILED' },
+      });
+    }
 
     await db.outboxCommand.update({
       where: { id: outboxCommandId },

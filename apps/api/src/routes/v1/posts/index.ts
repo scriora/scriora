@@ -183,6 +183,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         // 5. Create OutboxCommand (Transactional Outbox Pattern)
         const payloadJson = JSON.parse(
           JSON.stringify({
+            workspaceId,
             body: targetBody,
             platform: target.platform,
             socialAccountId: target.socialAccountId,
