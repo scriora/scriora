@@ -6,21 +6,25 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 
 ## 🌐 Supported Platforms
 
-| Platform | OAuth Version | Media Support | Status |
+| Platform | Auth & Protocol | Media Support | Status |
 |---|---|---|---|
-| **LinkedIn** | OAuth 2.0 (PKCE) | Text, Images, Video, PDF Documents | Production |
-| **X (Twitter)** | OAuth 2.0 (PKCE) | Text, Images, Video, Polls | Production |
-| **Threads** | OAuth 2.0 | Text, Images, Carousel, Video | Production |
-| **TikTok** | OAuth 2.0 | Short-form Video, Direct Share | Production |
-| **Instagram** | Meta Graph API | Reels, Carousel, Single Image | Production |
-| **Facebook** | Meta Graph API | Pages, Groups, Feed Posts | Production |
-| **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video | Production |
-| **Bluesky** | AT Protocol | Text, Images, Facets | Production |
-| **Mastodon** | ActivityPub / REST | Text, Media Attachments | Production |
-| **Pinterest** | OAuth 2.0 | Pins, Boards, Image/Video | Production |
-| **Reddit** | OAuth 2.0 | Subreddit text & link posts | Production |
-| **Telegram** | Bot API (C2 & Broadcast) | Text, Images, Media Albums, Interactive Inline Approvals, C2 Admin Bot | Production |
-| **Discord** | Webhook / Bot API | Rich Embeds, Announcements | Production |
+| **LinkedIn** | OAuth 2.0 (PKCE) | Text, Images, Video, PDF Documents | Production (Live) ✅ |
+| **Telegram** | Bot API + C2 Webhook | Text (MarkdownV2), Photos, Channels, Groups, C2 Approval Bot | Production (Live) ✅ |
+| **X (Twitter)** | OAuth 2.0 (PKCE) / API v2 | Text, Threads, Images, Videos, Polls | Production (Adapter Ready) 🚀 |
+| **Discord** | Webhook / Bot API | Rich Embeds, Announcements, Channels | Tier 1 (Immediate) |
+| **Slack** | Incoming Webhook / Bot Token | Block Kit, Announcements, Team Channels | Tier 1 (Immediate) |
+| **Bluesky** | AT Protocol (App Passwords) | Text, Images, Facets | Tier 1 (Immediate) |
+| **Mastodon** | ActivityPub / REST Bearer | Statuses, Content Warnings, Media | Tier 1 (Immediate) |
+| **Medium / Dev.to** | Integration Tokens | Markdown Articles, Canonical URLs | Tier 1 (Immediate) |
+| **Reddit** | OAuth 2.0 (Script App) | Subreddit Posts, Links, Media | Tier 2 (Self-Serve) |
+| **Threads** | Threads API (OAuth 2.0) | Text (500 chars), Images, Carousel, Video | Tier 2 (Self-Serve) |
+| **Google Business Profile** | Google OAuth 2.0 | Local Business Updates, Offers, Events, Photos | Tier 3 (Quotas) |
+| **Pinterest** | OAuth 2.0 (API v5) | Pins, Boards, Image/Video | Tier 3 (Quotas) |
+| **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video | Tier 3 (Quotas) |
+| **Instagram** | Meta Graph API (Containers) | Reels, Carousel, Single Image | Tier 4 (Enterprise Review) |
+| **Facebook** | Meta Graph API | Pages, Groups, Feed Posts | Tier 4 (Enterprise Review) |
+| **TikTok** | TikTok Content Posting API | Short-form Video, Direct Share | Tier 4 (Enterprise Review) |
+| **WhatsApp Channels** | Meta Cloud API | Channel Broadcasts, Media Updates | Tier 4 (Enterprise Review) |
 
 ---
 
@@ -46,5 +50,6 @@ export interface PlatformContract {
 ## 🔒 Token Security & Encryption
 
 - Social access tokens and refresh tokens are **never stored in plaintext**.
-- Tokens are encrypted at rest using **AES-256-GCM** with an envelope encryption key (`SOCIAL_TOKEN_ENCRYPTION_KEY`).
+- Tokens are encrypted at rest using **AES-256-GCM** with an envelope encryption key (`MASTER_ENCRYPTION_KEY`).
 - Token refresh routines are executed automatically in background workers prior to token expiration.
+
