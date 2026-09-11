@@ -1,10 +1,10 @@
 import type { PrismaClient } from 'scriora-core';
 import {
   LinkedInAdapter,
-  TelegramAdapter,
-  XAdapter,
   platformRegistry,
   type SocialPlatformType,
+  TelegramAdapter,
+  XAdapter,
 } from 'scriora-social';
 import { z } from 'zod';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
@@ -142,15 +142,13 @@ export async function processOutboxCommand(
       try {
         const decrypted = getEnvelopeService().decrypt(envelope.envelopeData);
         accessToken = decrypted.accessToken;
-      } catch (err) {
+      } catch (_err) {
         // Fallback or ignore in test mock environments
       }
     }
 
     const externalAccountId = command.publication?.socialAccount?.externalAccountId;
-    const authorUrn = externalAccountId
-      ? `urn:li:person:${externalAccountId}`
-      : undefined;
+    const authorUrn = externalAccountId ? `urn:li:person:${externalAccountId}` : undefined;
 
     // 3. Dispatch to platform
     const result = await adapter.publish({

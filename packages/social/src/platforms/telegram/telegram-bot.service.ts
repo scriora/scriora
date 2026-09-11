@@ -26,9 +26,11 @@ export interface InlineKeyboardButton {
 export interface SendMessageOptions {
   parseMode?: ('HTML' | 'MarkdownV2' | 'Markdown') | undefined;
   disableWebPagePreview?: boolean | undefined;
-  replyMarkup?: {
-    inline_keyboard?: InlineKeyboardButton[][] | undefined;
-  } | undefined;
+  replyMarkup?:
+    | {
+        inline_keyboard?: InlineKeyboardButton[][] | undefined;
+      }
+    | undefined;
 }
 
 export interface TelegramUpdate {
@@ -235,7 +237,14 @@ export class TelegramBotService {
     rejectButtonText?: string | undefined;
     customHeader?: string | undefined;
     customFooter?: string | undefined;
-    customTemplate?: ((data: { platform: string; title: string; body: string; scheduledAt?: string | undefined }) => string) | undefined;
+    customTemplate?:
+      | ((data: {
+          platform: string;
+          title: string;
+          body: string;
+          scheduledAt?: string | undefined;
+        }) => string)
+      | undefined;
   }): Promise<number | null> {
     let message: string;
     if (params.customTemplate) {
@@ -253,7 +262,9 @@ export class TelegramBotService {
         ``,
         `📋 <b>المنصة:</b> <code>${params.platform}</code>`,
         `🏷️ <b>العنوان:</b> ${params.title}`,
-        params.scheduledAt ? `⏰ <b>الموعد المجدول:</b> ${params.scheduledAt}` : `⚡ <b>الموعد:</b> فوري عند الاعتماد`,
+        params.scheduledAt
+          ? `⏰ <b>الموعد المجدول:</b> ${params.scheduledAt}`
+          : `⚡ <b>الموعد:</b> فوري عند الاعتماد`,
         ``,
         `📝 <b>نص المنشور:</b>`,
         `<blockquote>${params.body}</blockquote>`,
@@ -299,14 +310,17 @@ export class TelegramBotService {
         const [action, token] = data.split(':');
         const decision = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
-        let success = false;
         if (context?.handleApprovalDecision && token) {
-          success = await context.handleApprovalDecision(token, decision);
+          await context.handleApprovalDecision(token, decision);
         }
 
         const icon = decision === 'APPROVED' ? '✅' : '❌';
-        const defaultLabel = decision === 'APPROVED' ? 'تم الاعتماد والنشر بنجاح 🚀' : 'تم الرفض وإلغاء المنشور 🗑️';
-        const customLabel = decision === 'APPROVED' ? this.config.approvalApprovedLabel : this.config.approvalRejectedLabel;
+        const defaultLabel =
+          decision === 'APPROVED' ? 'تم الاعتماد والنشر بنجاح 🚀' : 'تم الرفض وإلغاء المنشور 🗑️';
+        const customLabel =
+          decision === 'APPROVED'
+            ? this.config.approvalApprovedLabel
+            : this.config.approvalRejectedLabel;
         const label = customLabel ?? defaultLabel;
 
         await this.answerCallbackQuery(cq.id, `${icon} ${label}`);
@@ -382,7 +396,10 @@ export class TelegramBotService {
 
       if (text === '/status') {
         if (!context?.getSystemStatus) {
-          await this.sendMessage(chatId, `⚡ <b>حالة النظام:</b> متصل ونشط 🟢\nسيرفر API يعمل بكفاءة على المنفذ 4000.`);
+          await this.sendMessage(
+            chatId,
+            `⚡ <b>حالة النظام:</b> متصل ونشط 🟢\nسيرفر API يعمل بكفاءة على المنفذ 4000.`
+          );
           return { handled: true, action: 'status' };
         }
 
@@ -412,9 +429,7 @@ export class TelegramBotService {
         const listText = [
           `🌐 <b>الحسابات الاجتماعية المتصلة بمساحة العمل:</b>`,
           ``,
-          ...accounts.map(
-            (a) => `• <b>${a.platform}</b>: ${a.name} [<code>${a.status}</code>]`
-          ),
+          ...accounts.map((a) => `• <b>${a.platform}</b>: ${a.name} [<code>${a.status}</code>]`),
           ``,
           `<i>جاهزة للنشر المتزامن والمؤتمت ⚡</i>`,
         ].join('\n');
@@ -460,7 +475,10 @@ export class TelegramBotService {
             return { handled: true, action: 'photo_failed' };
           }
 
-          await this.sendMessage(chatId, `⏳ <i>جاري معالجة الصورة ونشرها على الوجهات المتصلة...</i>`);
+          await this.sendMessage(
+            chatId,
+            `⏳ <i>جاري معالجة الصورة ونشرها على الوجهات المتصلة...</i>`
+          );
           const result = await context.createPost({
             text: caption,
             mediaUrls: photoUrl ? [photoUrl] : undefined,

@@ -87,9 +87,7 @@ export class LinkedInAdapter implements PlatformAdapter {
           {
             status: 'READY',
             originalUrl: articleUrl,
-            ...(request.metadata?.title
-              ? { title: { text: String(request.metadata.title) } }
-              : {}),
+            ...(request.metadata?.title ? { title: { text: String(request.metadata.title) } } : {}),
             ...(request.metadata?.description
               ? { description: { text: String(request.metadata.description) } }
               : {}),
@@ -97,7 +95,8 @@ export class LinkedInAdapter implements PlatformAdapter {
         ];
       } else if (request.mediaUrls.length > 0) {
         shareMediaCategory = 'IMAGE';
-        const uploadedAssets: Array<{ status: string; media: string; title?: { text: string } }> = [];
+        const uploadedAssets: Array<{ status: string; media: string; title?: { text: string } }> =
+          [];
         for (const url of request.mediaUrls) {
           const assetUrn = await this.registerAndUploadImage(url, authorUrn, accessToken);
           uploadedAssets.push({

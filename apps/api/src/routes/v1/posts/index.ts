@@ -30,7 +30,14 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    const { body, targets, media, mediaUrls, scheduledAt, idempotencyKey: bodyKey } = parseResult.data;
+    const {
+      body,
+      targets,
+      media,
+      mediaUrls,
+      scheduledAt,
+      idempotencyKey: bodyKey,
+    } = parseResult.data;
     const headerKey = request.headers['idempotency-key'] as string | undefined;
     const idempotencyKey = headerKey || bodyKey || crypto.randomUUID();
     const workspaceId = request.workspace!.id;
@@ -98,7 +105,9 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         where: { id: { in: assetIds } },
         select: { storageKey: true },
       });
-      resolvedMediaUrls = assets.map((a) => a.storageKey).filter((key): key is string => Boolean(key));
+      resolvedMediaUrls = assets
+        .map((a) => a.storageKey)
+        .filter((key): key is string => Boolean(key));
       if (resolvedMediaUrls.length === 0) {
         resolvedMediaUrls = assetIds;
       }

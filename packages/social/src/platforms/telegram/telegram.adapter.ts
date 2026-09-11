@@ -62,7 +62,7 @@ export class TelegramAdapter implements PlatformAdapter {
     const parseMode = meta.parseMode || 'HTML';
 
     try {
-      let response: { data: { ok: boolean; result: any } };
+      let response: { data: { ok: boolean; result: unknown } };
 
       if (!request.mediaUrls || request.mediaUrls.length === 0) {
         // 1. Text Message
@@ -102,13 +102,19 @@ export class TelegramAdapter implements PlatformAdapter {
         });
       }
 
-      const messageResult = Array.isArray(response.data.result)
+      const rawResult = Array.isArray(response.data.result)
         ? response.data.result[0]
         : response.data.result;
+      const messageResult = rawResult as {
+        message_id: number;
+        chat?: { username?: string };
+      };
 
       const messageId = messageResult.message_id;
       const externalPostId = `tg_${chatId}_${messageId}`;
-      const chatUsername = messageResult.chat?.username || (typeof chatId === 'string' && chatId.startsWith('@') ? chatId.slice(1) : undefined);
+      const chatUsername =
+        messageResult.chat?.username ||
+        (typeof chatId === 'string' && chatId.startsWith('@') ? chatId.slice(1) : undefined);
       const externalPostUrl = chatUsername
         ? `https://t.me/${chatUsername}/${messageId}`
         : undefined;
@@ -138,7 +144,12 @@ export class TelegramAdapter implements PlatformAdapter {
 
         throw new PlatformError({
           message: `Telegram API error (${status}): ${tgDesc}`,
-          code: status === 429 ? 'RATE_LIMITED' : status === 401 ? 'INVALID_BOT_TOKEN' : 'TELEGRAM_ERROR',
+          code:
+            status === 429
+              ? 'RATE_LIMITED'
+              : status === 401
+                ? 'INVALID_BOT_TOKEN'
+                : 'TELEGRAM_ERROR',
           retryable,
           platformCode: String(status),
           retryAfterMs: retryAfterSec ? retryAfterSec * 1000 : undefined,
@@ -158,7 +169,11 @@ export class TelegramAdapter implements PlatformAdapter {
     return externalPostId.startsWith('tg_') || /^\d+$/.test(externalPostId);
   }
 
-  public async deletePost(externalPostId: string, botToken: string, chatId?: string): Promise<boolean> {
+  public async deletePost(
+    externalPostId: string,
+    botToken: string,
+    chatId?: string
+  ): Promise<boolean> {
     if (!externalPostId || !botToken) return false;
 
     let targetChatId = chatId;

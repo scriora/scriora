@@ -1,14 +1,14 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
-import { z } from 'zod';
 import {
   LinkedInAdapter,
-  TelegramAdapter,
   platformRegistry,
   type SocialPlatformType,
+  TelegramAdapter,
   XAdapter,
 } from 'scriora-social';
+import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
 
 // Ensure real adapters are registered in platform registry
@@ -361,19 +361,36 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       (request.query as { workspaceId?: string })?.workspaceId;
 
     if (!workspaceId) {
-      return reply.status(400).send(
-        err('MISSING_WORKSPACE', 'VALIDATION_ERROR', 'x-workspace-id header or workspaceId query parameter is required', request.id)
-      );
+      return reply
+        .status(400)
+        .send(
+          err(
+            'MISSING_WORKSPACE',
+            'VALIDATION_ERROR',
+            'x-workspace-id header or workspaceId query parameter is required',
+            request.id
+          )
+        );
     }
 
     try {
       // 1. Verify bot token with Telegram API
       const meRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
-      const meData = (await meRes.json()) as { ok: boolean; result?: { username?: string; first_name?: string } };
+      const meData = (await meRes.json()) as {
+        ok: boolean;
+        result?: { username?: string; first_name?: string };
+      };
       if (!meData?.ok || !meData.result) {
-        return reply.status(400).send(
-          err('INVALID_BOT_TOKEN', 'VALIDATION_ERROR', 'Telegram bot token is invalid', request.id)
-        );
+        return reply
+          .status(400)
+          .send(
+            err(
+              'INVALID_BOT_TOKEN',
+              'VALIDATION_ERROR',
+              'Telegram bot token is invalid',
+              request.id
+            )
+          );
       }
 
       const botInfo = meData.result;
@@ -455,9 +472,16 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       );
     } catch (e: unknown) {
       const errObj = e as { message?: string };
-      return reply.status(500).send(
-        err('TELEGRAM_CONNECT_FAILED', 'INTERNAL_ERROR', errObj.message || 'Failed to connect Telegram', request.id)
-      );
+      return reply
+        .status(500)
+        .send(
+          err(
+            'TELEGRAM_CONNECT_FAILED',
+            'INTERNAL_ERROR',
+            errObj.message || 'Failed to connect Telegram',
+            request.id
+          )
+        );
     }
   });
 };

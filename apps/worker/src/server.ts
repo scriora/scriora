@@ -5,7 +5,7 @@
 // Reference: scriora-docs/architecture/SCRIORA_REPOSITORY_SPECIFICATIONS.md
 
 import { serve } from 'inngest/node';
-import { LinkedInAdapter, TelegramAdapter, XAdapter, platformRegistry } from 'scriora-social';
+import { LinkedInAdapter, platformRegistry, TelegramAdapter, XAdapter } from 'scriora-social';
 import { inngest } from './inngest.js';
 import { outboxSweepJob } from './jobs/outbox-sweep.job.js';
 import { publishJob } from './jobs/publish.job.js';

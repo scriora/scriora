@@ -6,7 +6,11 @@
  */
 
 import axios from 'axios';
-import { TelegramBotService, type TelegramDbContext, type TelegramUpdate } from './telegram-bot.service.js';
+import {
+  TelegramBotService,
+  type TelegramDbContext,
+  type TelegramUpdate,
+} from './telegram-bot.service.js';
 
 export interface PollingRunnerOptions {
   botToken: string;
