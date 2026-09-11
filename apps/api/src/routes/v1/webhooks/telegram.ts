@@ -191,15 +191,28 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (tokenRecord.approval.resourceType === 'PUBLICATION') {
           const newStatus = decision === 'APPROVED' ? 'READY' : 'CANCELLED';
-          await tx.publication.update({
+          const pub = await tx.publication.findUnique({
             where: { id: tokenRecord.approval.resourceId },
-            data: { status: newStatus },
+            include: { contentVariant: true },
           });
 
-          if (decision === 'REJECTED') {
-            await tx.outboxCommand.deleteMany({
-              where: { publicationId: tokenRecord.approval.resourceId, status: 'PENDING' },
+          if (pub) {
+            const relatedPubs = await tx.publication.findMany({
+              where: { contentVariant: { contentId: pub.contentVariant.contentId } },
+              select: { id: true },
             });
+            const allPubIds = relatedPubs.map((p) => p.id);
+
+            await tx.publication.updateMany({
+              where: { id: { in: allPubIds } },
+              data: { status: newStatus },
+            });
+
+            if (decision === 'REJECTED') {
+              await tx.outboxCommand.deleteMany({
+                where: { publicationId: { in: allPubIds }, status: 'PENDING' },
+              });
+            }
           }
         }
       });
