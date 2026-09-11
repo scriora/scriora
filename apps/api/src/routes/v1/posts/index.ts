@@ -30,7 +30,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    const { body, targets, media, scheduledAt, idempotencyKey: bodyKey } = parseResult.data;
+    const { body, targets, media, mediaUrls, scheduledAt, idempotencyKey: bodyKey } = parseResult.data;
     const headerKey = request.headers['idempotency-key'] as string | undefined;
     const idempotencyKey = headerKey || bodyKey || crypto.randomUUID();
     const workspaceId = request.workspace!.id;
@@ -90,6 +90,20 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         ? 'SCHEDULED'
         : 'READY';
 
+    // Resolve media URLs: direct URLs or mediaAsset storage keys
+    let resolvedMediaUrls: string[] = mediaUrls || [];
+    if (media && media.length > 0 && resolvedMediaUrls.length === 0) {
+      const assetIds = media.map((m) => m.mediaAssetId);
+      const assets = await prisma.mediaAsset.findMany({
+        where: { id: { in: assetIds } },
+        select: { storageKey: true },
+      });
+      resolvedMediaUrls = assets.map((a) => a.storageKey).filter((key): key is string => Boolean(key));
+      if (resolvedMediaUrls.length === 0) {
+        resolvedMediaUrls = assetIds;
+      }
+    }
+
     // Atomic creation of Content -> Variants -> Publications -> Attempts -> Outbox
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create master Content record
@@ -113,7 +127,12 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
             contentId: content.id,
             socialAccountId: target.socialAccountId,
             body,
-            metadata: JSON.parse(JSON.stringify(target.platformOptions || {})),
+            metadata: JSON.parse(
+              JSON.stringify({
+                ...(target.platformOptions || {}),
+                mediaUrls: resolvedMediaUrls,
+              })
+            ),
             status: 'READY',
           },
         });
@@ -156,7 +175,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
             body,
             platform: target.platform,
             socialAccountId: target.socialAccountId,
-            mediaUrls: media?.map((m) => m.mediaAssetId) || [],
+            mediaUrls: resolvedMediaUrls,
             idempotencyKey: targetIdempotency,
             fingerprint,
             options: target.platformOptions || {},

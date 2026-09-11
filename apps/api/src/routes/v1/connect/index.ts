@@ -395,6 +395,7 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
 
       // 3. Encrypt credentials with Master Key
       const { ciphertext, keyId } = encryptPayload({
+        accessToken: botToken,
         botToken,
         chatId,
         botUsername,

@@ -147,14 +147,15 @@ export async function processOutboxCommand(
       }
     }
 
-    const authorUrn = command.publication?.socialAccount?.externalAccountId
-      ? `urn:li:person:${command.publication.socialAccount.externalAccountId}`
+    const externalAccountId = command.publication?.socialAccount?.externalAccountId;
+    const authorUrn = externalAccountId
+      ? `urn:li:person:${externalAccountId}`
       : undefined;
 
     // 3. Dispatch to platform
     const result = await adapter.publish({
       workspaceId: command.workspaceId,
-      accountId: payload.socialAccountId,
+      accountId: externalAccountId || payload.socialAccountId,
       text: payload.body ?? '',
       mediaUrls: payload.mediaUrls ?? [],
       idempotencyKey: payload.idempotencyKey,
@@ -163,6 +164,7 @@ export async function processOutboxCommand(
         ...payload.metadata,
         ...(accessToken ? { accessToken } : {}),
         ...(authorUrn ? { authorUrn } : {}),
+        ...(externalAccountId ? { externalAccountId, chatId: externalAccountId } : {}),
       },
     });
 

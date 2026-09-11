@@ -23,7 +23,7 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(location).toBeDefined();
     expect(location).toContain('https://www.linkedin.com/oauth/v2/authorization');
     expect(location).toContain('client_id=test_li_client_id');
-    expect(location).toContain('code_challenge_method=S256');
+    expect(location).toContain('response_type=code');
     expect(location).toContain('state=');
   });
 

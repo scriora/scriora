@@ -111,6 +111,9 @@ export const PublishPayloadSchema = z.object({
   /** Optional media attachments */
   media: z.array(MediaRefSchema).max(10).optional(),
 
+  /** Direct media URLs (images/videos) */
+  mediaUrls: z.array(z.string().url()).max(10).optional(),
+
   /** Schedule for a future time (ISO 8601). Omit for immediate publish. */
   scheduledAt: z
     .string()

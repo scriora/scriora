@@ -155,6 +155,8 @@ export const publishJob = inngest.createFunction(
             authorUrn: account.externalAccountId
               ? `urn:li:person:${account.externalAccountId}`
               : undefined,
+            chatId: account.externalAccountId,
+            externalAccountId: account.externalAccountId,
             options: payload.options,
           },
         });

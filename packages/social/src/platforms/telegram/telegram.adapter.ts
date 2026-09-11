@@ -35,7 +35,11 @@ export class TelegramAdapter implements PlatformAdapter {
   public async publish(request: PublishRequest): Promise<PublishResult> {
     const meta = (request.metadata || {}) as TelegramMetadata;
     const botToken = meta.botToken || (request.metadata?.accessToken as string) || '';
-    const chatId = meta.chatId || request.accountId;
+    const chatId =
+      meta.chatId ||
+      (request.metadata?.chatId as string) ||
+      (request.metadata?.externalAccountId as string) ||
+      request.accountId;
 
     if (!botToken) {
       throw new PlatformError({
