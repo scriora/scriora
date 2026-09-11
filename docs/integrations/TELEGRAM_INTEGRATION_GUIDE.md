@@ -52,7 +52,48 @@ flowchart TD
 
 ---
 
-## 2. 🔐 Zero-Trust Security & Key Encryption
+## 2. 📋 What We Need from the User (ما نحتاجه من المستخدم خطوة بخطوة)
+
+لربط تيليجرام بنجاح في مساحة العمل والاستفادة من النشر متعدد الوجهات والتحكم المركزي، يحتاج المستخدم إلى تزويد المنصة بثلاثة عناصر أساسية فقط:
+
+### 1. توكن البوت (Bot Token) 🤖
+* **التعريف:** المفتاح السري الذي يسمح لـ Scriora بإرسال المنشورات واستقبال الأوامر.
+* **كيف يحصل عليه المستخدم:**
+  1. يفتح تطبيق تيليجرام ويبحث عن البوت الرسمي: [@BotFather](https://t.me/BotFather).
+  2. يرسل الأمر: `/newbot`.
+  3. يحدد اسماً للبوت (مثلاً: `My Company Publisher`) واسم مستخدم ينتهي بـ `bot` (مثلاً: `my_company_pub_bot`).
+  4. يقوم بنسخ الـ **HTTP API Token** (يبدو بهذا الشكل: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
+* **أين يُدخل في Scriora:** في واجهة الربط أو حقل `botToken` في طلب `POST /v1/connect/telegram`.
+
+---
+
+### 2. معرّف وجهة النشر (Destination / Chat ID) 📢
+حسب المكان الذي يريد المستخدم النشر فيه:
+* **إذا كان النشر في قناة (Telegram Channel):**
+  1. يقوم المستخدم بإضافة البوت إلى القناة كـ **مشرف (Administrator)** مع تفعيل صلاحية **نشر الرسائل (Post Messages)**.
+  2. **إذا كانت القناة عامة:** يزودنا بمعرّف القناة مباشرة (مثال: `@my_company_channel`).
+  3. **إذا كانت القناة خاصة:** يرسل أي منشور تجريبي داخل القناة بعد إضافة البوت، فيلتقط نظام Scriora المعرف الرقمي السالب فوراً (مثال: `-1001234567890`).
+* **إذا كان النشر في مجموعة (Supergroup / Forum):**
+  1. يضيف البوت إلى المجموعة كعضو أو مشرف.
+  2. يكتب أي رسالة تحتوي على منشن للبوت (مثال: `@my_company_pub_bot test`) لالتقاط معرّف المجموعة السالب (مثال: `-1009876543210`).
+* **إذا كان النشر في محادثة خاصة (Direct Private Messages):**
+  1. يفتح رابط البوت ويضغط زر `/start`.
+
+---
+
+### 3. معرّف المستخدم للإدارة والتحكم (Admin Telegram ID) 🛡️ [اختياري / للتحكم والاعتماد]
+* **التعريف:** رقم الـ User ID الخاص بحساب تيليجرام الشخصي للمدير التنفيذي أو المسؤول.
+* **الغرض:** تفعيل جدار الحماية **Zero-Trust Whitelist**:
+  * لتلقي بطاقات الاعتماد والموافقة البشرية بنقرة واحدة (`[ ✅ اعتماد ]` و `[ ❌ رفض ]`).
+  * لتنفيذ أوامر الإدارة الحصرية (`/status`, `/accounts`, `/post`) ومنع أي مستخدم غريب من التحدث للبوت.
+* **كيف يحصل عليه المستخدم:**
+  * يفتح البوت الشهير [@userinfobot](https://t.me/userinfobot) في تيليجرام، فيظهر له معرّفه الرقمي فوراً (مثال: `987654321`).
+  * أو يضغط `/start` مع البوت الخاص به فيسجل النظام معرّفه تلقائياً.
+* **أين يُحفظ:** في متغير البيئة `TELEGRAM_ADMIN_CHAT_ID` أو في ملف إعدادات مساحة العمل.
+
+---
+
+## 3. 🔐 Zero-Trust Security & Key Encryption
 
 All Telegram credentials, bot tokens, and destination identifiers are stored in PostgreSQL using **AES-256-GCM Envelope Encryption** (`secret_envelopes` table).
 
@@ -70,7 +111,7 @@ public isAuthorized(senderId: string | number): boolean {
 
 ---
 
-## 3. 🎯 Multi-Destination Ingestion & Mapping
+## 4. 🎯 Multi-Destination Ingestion & Mapping
 
 Telegram separates targets into distinct chat types:
 
@@ -97,7 +138,7 @@ x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 
 ---
 
-## 4. 🎮 Interactive Admin Commands (C2 Bot)
+## 5. 🎮 Interactive Admin Commands (C2 Bot)
 
 The authorized administrator can manage Scriora directly from the Telegram chat interface:
 
@@ -110,7 +151,7 @@ The authorized administrator can manage Scriora directly from the Telegram chat 
 
 ---
 
-## 5. 🛡️ Two-Way Human Governance (§14 Approvals)
+## 6. 🛡️ Two-Way Human Governance (§14 Approvals)
 
 When a post is scheduled by an AI agent or requires human validation before going live (`requiresApproval = true`):
 
@@ -139,7 +180,7 @@ When a post is scheduled by an AI agent or requires human validation before goin
 
 ---
 
-## 6. ⚙️ Operating Modes: Webhook vs Long-Polling
+## 7. ⚙️ Operating Modes: Webhook vs Long-Polling
 
 Scriora supports two operational modes:
 
@@ -162,7 +203,7 @@ Scriora supports two operational modes:
 
 ---
 
-## 7. 🧪 Verification & Test Suite
+## 8. 🧪 Verification & Test Suite
 
 Scriora includes dedicated unit and integration tests:
 
