@@ -11,6 +11,7 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
 
   if (!botToken) {
     fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured in environment variables.');
+    return;
   }
 
   const botService = new TelegramBotService({
