@@ -66,4 +66,52 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(json.success).toBe(false);
     expect(json.error.code).toBe('UNSUPPORTED_PLATFORM');
   });
+
+  it('POST /v1/connect/discord returns 400 INVALID_PAYLOAD on malformed payload', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/connect/discord?workspaceId=${validWsId}`,
+      payload: { mode: 'INVALID_MODE' },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('INVALID_PAYLOAD');
+  });
+
+  it('POST /v1/connect/discord returns 400 MISSING_WORKSPACE if no workspace provided', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/connect/discord',
+      payload: {
+        mode: 'BOT',
+        botToken: 'abcdef12345678901234567890',
+        channelId: '123456789012345678',
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('MISSING_WORKSPACE');
+  });
+
+  it('GET /v1/connect/discord/channels returns 400 MISSING_BOT_TOKEN when token not provided', async () => {
+    const savedToken = process.env.DISCORD_BOT_TOKEN;
+    delete process.env.DISCORD_BOT_TOKEN;
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/connect/discord/channels',
+    });
+
+    if (savedToken) process.env.DISCORD_BOT_TOKEN = savedToken;
+
+    expect(res.statusCode).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('MISSING_BOT_TOKEN');
+  });
 });
+

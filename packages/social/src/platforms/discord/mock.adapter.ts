@@ -28,9 +28,7 @@ export class MockDiscordAdapter implements PlatformAdapter {
     const randomId = randomUUID().replace(/-/g, '').slice(0, 18);
     const externalPostId = `1234567890${randomId.slice(0, 8)}`;
     const channelId =
-      (typeof request.metadata?.channelId === 'string'
-        ? request.metadata.channelId
-        : undefined) ||
+      (typeof request.metadata?.channelId === 'string' ? request.metadata.channelId : undefined) ||
       request.accountId ||
       '112233445566778899';
     const externalPostUrl = `https://discord.com/channels/@me/${channelId}/${externalPostId}`;

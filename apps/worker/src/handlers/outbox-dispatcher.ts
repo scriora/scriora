@@ -156,6 +156,13 @@ export async function processOutboxCommand(
     const externalAccountId = command.publication?.socialAccount?.externalAccountId;
     const authorUrn = externalAccountId ? `urn:li:person:${externalAccountId}` : undefined;
 
+    const optionsObj =
+      (payload as Record<string, unknown>).options &&
+      typeof (payload as Record<string, unknown>).options === 'object'
+        ? (((payload as Record<string, unknown>).options as Record<string, unknown>).options ??
+          (payload as Record<string, unknown>).options)
+        : {};
+
     // 3. Dispatch to platform
     const result = await adapter.publish({
       workspaceId: command.workspaceId,
@@ -166,6 +173,7 @@ export async function processOutboxCommand(
       fingerprint: payload.fingerprint,
       metadata: {
         ...payload.metadata,
+        ...(typeof optionsObj === 'object' && optionsObj !== null ? optionsObj : {}),
         ...(accessToken ? { accessToken } : {}),
         ...(authorUrn ? { authorUrn } : {}),
         ...(externalAccountId ? { externalAccountId, chatId: externalAccountId } : {}),

@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
 import {
+  DiscordAdapter,
   LinkedInAdapter,
   platformRegistry,
   type SocialPlatformType,
@@ -29,6 +30,13 @@ try {
 const realTelegram = new TelegramAdapter();
 try {
   platformRegistry.register(realTelegram);
+} catch {
+  // Already registered
+}
+
+const realDiscord = new DiscordAdapter();
+try {
+  platformRegistry.register(realDiscord);
 } catch {
   // Already registered
 }
@@ -82,6 +90,19 @@ function encryptPayload(data: Record<string, unknown>): { ciphertext: Uint8Array
   // Combined format: [12-byte IV][16-byte TAG][Encrypted Data]
   const envelopeData = Buffer.concat([iv, tag, encrypted]);
   return { ciphertext: new Uint8Array(envelopeData), keyId: 'master-v1' };
+}
+
+function decryptEnvelopePayload(ciphertextBytes: Uint8Array): Record<string, unknown> {
+  const masterKey = getMasterKey();
+  const buffer = Buffer.from(ciphertextBytes);
+  const iv = buffer.subarray(0, 12);
+  const tag = buffer.subarray(12, 28);
+  const encrypted = buffer.subarray(28);
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', masterKey, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  return JSON.parse(decrypted.toString('utf8'));
 }
 
 export const connectRoutes: FastifyPluginAsync = async (fastify) => {
@@ -479,6 +500,352 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
             'TELEGRAM_CONNECT_FAILED',
             'INTERNAL_ERROR',
             errObj.message || 'Failed to connect Telegram',
+            request.id
+          )
+        );
+    }
+  });
+
+  // 5. Discord Account Connection (Webhook or Bot API Mode)
+  fastify.post('/discord', async (request, reply) => {
+    const DiscordConnectSchema = z.discriminatedUnion('mode', [
+      z.object({
+        mode: z.literal('WEBHOOK'),
+        webhookUrl: z
+          .string()
+          .url()
+          .refine(
+            (url) =>
+              url.startsWith('https://discord.com/api/webhooks/') ||
+              url.startsWith('https://discordapp.com/api/webhooks/'),
+            { message: 'Invalid Discord webhook URL' }
+          ),
+        channelTitle: z.string().min(1).max(100).optional(),
+      }),
+      z.object({
+        mode: z.literal('BOT'),
+        botToken: z.string().min(20),
+        channelId: z.string().regex(/^\d{17,20}$/, 'Invalid Discord channel snowflake ID'),
+        guildId: z
+          .string()
+          .regex(/^\d{17,20}$/)
+          .optional(),
+        channelTitle: z.string().min(1).max(100).optional(),
+      }),
+    ]);
+
+    const parseResult = DiscordConnectSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send(
+        err(
+          'INVALID_PAYLOAD',
+          'VALIDATION_ERROR',
+          'Invalid Discord connection payload',
+          request.id,
+          false,
+          parseResult.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }))
+        )
+      );
+    }
+
+    const payload = parseResult.data;
+    const workspaceId =
+      (request.headers['x-workspace-id'] as string | undefined) ||
+      (request.query as { workspaceId?: string })?.workspaceId;
+
+    if (!workspaceId) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'MISSING_WORKSPACE',
+            'VALIDATION_ERROR',
+            'x-workspace-id header or workspaceId query parameter is required',
+            request.id
+          )
+        );
+    }
+
+    try {
+      let externalAccountId: string;
+      let verifiedTitle: string;
+      let secretPayload: Record<string, unknown>;
+
+      if (payload.mode === 'WEBHOOK') {
+        const whRes = await fetch(payload.webhookUrl);
+        if (!whRes.ok) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'INVALID_WEBHOOK_URL',
+                'VALIDATION_ERROR',
+                'Discord webhook URL could not be verified',
+                request.id
+              )
+            );
+        }
+        const whData = (await whRes.json()) as {
+          id?: string;
+          name?: string;
+          channel_id?: string;
+          guild_id?: string;
+        };
+        externalAccountId = whData.channel_id || whData.id || crypto.randomUUID();
+        verifiedTitle = payload.channelTitle || whData.name || 'Discord Webhook Channel';
+        secretPayload = {
+          webhookUrl: payload.webhookUrl,
+          channelId: whData.channel_id,
+          guildId: whData.guild_id,
+          name: verifiedTitle,
+          mode: 'WEBHOOK',
+        };
+      } else {
+        const meRes = await fetch('https://discord.com/api/v10/users/@me', {
+          headers: { Authorization: `Bot ${payload.botToken}` },
+        });
+        if (!meRes.ok) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'INVALID_BOT_TOKEN',
+                'VALIDATION_ERROR',
+                'Discord bot token could not be verified with Discord API',
+                request.id
+              )
+            );
+        }
+        const botData = (await meRes.json()) as { id?: string; username?: string };
+
+        let channelName = payload.channelTitle;
+        let resolvedGuildId = payload.guildId;
+        try {
+          const chRes = await fetch(`https://discord.com/api/v10/channels/${payload.channelId}`, {
+            headers: { Authorization: `Bot ${payload.botToken}` },
+          });
+          if (chRes.ok) {
+            const chData = (await chRes.json()) as {
+              id?: string;
+              name?: string;
+              guild_id?: string;
+            };
+            channelName = channelName || `#${chData.name}`;
+            resolvedGuildId = resolvedGuildId || chData.guild_id;
+          }
+        } catch {
+          // Keep provided title
+        }
+
+        externalAccountId = payload.channelId;
+        verifiedTitle = channelName || `Discord #${payload.channelId}`;
+        secretPayload = {
+          botToken: payload.botToken,
+          channelId: payload.channelId,
+          guildId: resolvedGuildId,
+          botUsername: botData.username,
+          mode: 'BOT',
+        };
+      }
+
+      const { ciphertext, keyId } = encryptPayload(secretPayload);
+      const adapter = platformRegistry.get('DISCORD');
+      const capabilitiesJson = JSON.parse(JSON.stringify(adapter.getCapabilities()));
+
+      const socialAccount = await prisma.$transaction(async (tx) => {
+        const account = await tx.socialAccount.upsert({
+          where: {
+            uq_social_accounts_account: {
+              workspaceId,
+              platform: 'DISCORD',
+              externalAccountId,
+            },
+          },
+          create: {
+            workspaceId,
+            platform: 'DISCORD',
+            externalAccountId,
+            accountName: verifiedTitle,
+            status: 'CONNECTED',
+            capabilities: capabilitiesJson,
+          },
+          update: {
+            accountName: verifiedTitle,
+            status: 'CONNECTED',
+            capabilities: capabilitiesJson,
+          },
+        });
+
+        await tx.secretEnvelope.deleteMany({ where: { socialAccountId: account.id } });
+        await tx.secretEnvelope.create({
+          data: {
+            socialAccountId: account.id,
+            envelopeData: Buffer.from(ciphertext),
+            keyId,
+            algorithm: 'AES-256-GCM',
+          },
+        });
+
+        return account;
+      });
+
+      return reply.status(200).send(
+        ok(
+          {
+            message: `Successfully connected DISCORD account: ${verifiedTitle}`,
+            socialAccountId: socialAccount.id,
+            channelId: externalAccountId,
+            accountName: verifiedTitle,
+            mode: payload.mode,
+          },
+          request.id
+        )
+      );
+    } catch (e: unknown) {
+      const errObj = e as { message?: string };
+      return reply
+        .status(500)
+        .send(
+          err(
+            'DISCORD_CONNECT_FAILED',
+            'INTERNAL_ERROR',
+            errObj.message || 'Failed to connect Discord',
+            request.id
+          )
+        );
+    }
+  });
+
+  // 6. Discord Automated Guild & Channel Discovery
+  fastify.get('/discord/channels', async (request, reply) => {
+    const query = request.query as {
+      botToken?: string;
+      socialAccountId?: string;
+      guildId?: string;
+    };
+    const headerToken = request.headers['x-discord-bot-token'] as string | undefined;
+
+    let token = query.botToken || headerToken;
+
+    if (!token && query.socialAccountId) {
+      try {
+        const envelope = await prisma.secretEnvelope.findFirst({
+          where: { socialAccountId: query.socialAccountId },
+        });
+        if (envelope) {
+          const decrypted = decryptEnvelopePayload(new Uint8Array(envelope.envelopeData));
+          if (typeof decrypted.botToken === 'string') {
+            token = decrypted.botToken;
+          }
+        }
+      } catch {
+        // Ignore fallback
+      }
+    }
+
+    if (!token) {
+      token = process.env.DISCORD_BOT_TOKEN;
+    }
+
+    if (!token) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'MISSING_BOT_TOKEN',
+            'VALIDATION_ERROR',
+            'Discord bot token is required for channel discovery',
+            request.id
+          )
+        );
+    }
+
+    try {
+      const guildsRes = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+        headers: { Authorization: `Bot ${token}` },
+      });
+
+      if (!guildsRes.ok) {
+        return reply
+          .status(400)
+          .send(
+            err(
+              'DISCORD_API_ERROR',
+              'PLATFORM_ERROR',
+              'Failed to fetch Discord guilds for bot',
+              request.id
+            )
+          );
+      }
+
+      const guilds = (await guildsRes.json()) as Array<{
+        id: string;
+        name: string;
+        icon?: string | null;
+        owner?: boolean;
+        permissions?: string;
+      }>;
+
+      const targetGuilds = query.guildId
+        ? guilds.filter((g) => g.id === query.guildId)
+        : guilds.slice(0, 10);
+
+      const allChannels: Array<{
+        id: string;
+        name: string;
+        type: number;
+        guildId: string;
+        guildName: string;
+        typeName: string;
+      }> = [];
+
+      for (const guild of targetGuilds) {
+        try {
+          const chRes = await fetch(`https://discord.com/api/v10/guilds/${guild.id}/channels`, {
+            headers: { Authorization: `Bot ${token}` },
+          });
+          if (chRes.ok) {
+            const chList = (await chRes.json()) as Array<{
+              id: string;
+              name: string;
+              type: number;
+            }>;
+            for (const ch of chList) {
+              if ([0, 5, 15].includes(ch.type)) {
+                allChannels.push({
+                  id: ch.id,
+                  name: ch.name,
+                  type: ch.type,
+                  guildId: guild.id,
+                  guildName: guild.name,
+                  typeName: ch.type === 0 ? 'TEXT' : ch.type === 5 ? 'ANNOUNCEMENT' : 'FORUM',
+                });
+              }
+            }
+          }
+        } catch {
+          // Continue with next guild
+        }
+      }
+
+      return reply.status(200).send(
+        ok(
+          {
+            guilds: guilds.map((g) => ({ id: g.id, name: g.name, icon: g.icon })),
+            channels: allChannels,
+          },
+          request.id
+        )
+      );
+    } catch (e: unknown) {
+      const errObj = e as { message?: string };
+      return reply
+        .status(500)
+        .send(
+          err(
+            'CHANNEL_DISCOVERY_FAILED',
+            'INTERNAL_ERROR',
+            errObj.message || 'Failed to discover Discord channels',
             request.id
           )
         );

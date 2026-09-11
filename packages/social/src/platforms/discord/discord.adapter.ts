@@ -94,18 +94,14 @@ export class DiscordAdapter implements PlatformAdapter {
 
     const botToken =
       meta.botToken ||
-      (typeof request.metadata?.botToken === 'string'
-        ? request.metadata.botToken
-        : undefined) ||
+      (typeof request.metadata?.botToken === 'string' ? request.metadata.botToken : undefined) ||
       (!webhookUrl && typeof request.metadata?.accessToken === 'string'
         ? request.metadata.accessToken
         : undefined);
 
     const channelId =
       meta.channelId ||
-      (typeof request.metadata?.channelId === 'string'
-        ? request.metadata.channelId
-        : undefined) ||
+      (typeof request.metadata?.channelId === 'string' ? request.metadata.channelId : undefined) ||
       (typeof request.metadata?.externalAccountId === 'string'
         ? request.metadata.externalAccountId
         : undefined) ||
@@ -133,7 +129,10 @@ export class DiscordAdapter implements PlatformAdapter {
       meta.embedColor !== undefined ||
       Boolean(meta.embedFooter);
 
-    if (hasEmbedOptions || (request.mediaUrls && request.mediaUrls.length > 0 && embeds.length === 0)) {
+    if (
+      hasEmbedOptions ||
+      (request.mediaUrls && request.mediaUrls.length > 0 && embeds.length === 0)
+    ) {
       const embed: DiscordEmbed = {};
 
       if (meta.embedTitle) {
@@ -197,7 +196,8 @@ export class DiscordAdapter implements PlatformAdapter {
     // Ensure payload has at least content or embeds
     if (!payload.content && (!payload.embeds || (payload.embeds as unknown[]).length === 0)) {
       throw new PlatformError({
-        message: 'Discord message must have either text content or at least one embed/media attachment.',
+        message:
+          'Discord message must have either text content or at least one embed/media attachment.',
         code: 'EMPTY_DISCORD_PAYLOAD',
         retryable: false,
         platformCode: 'DISCORD',

@@ -1,19 +1,17 @@
 ---
 title: "Connecting Social Accounts"
-description: "Step-by-step guide for connecting social media accounts to Scriora, including Telegram, LinkedIn, and Meta platforms."
+description: "Step-by-step guide for connecting social media accounts to Scriora, including Telegram, Discord, LinkedIn, and Meta platforms."
 ---
 
 Scriora connects with diverse social platforms using secure, zero-trust token management and standardized platform adapters.
 
 ---
 
-## 📱 Telegram Integration (Channels, Groups, & C2 Bot)
+## 📱 1. Telegram Integration (Channels, Groups, & C2 Bot)
 
 Telegram integration in Scriora supports **multi-destination publishing** (private chats, public/private channels, and supergroups) as well as **interactive Command & Control (C2)** for mobile approvals.
 
 ### 🤖 Dual Connection Modes: Shared Official Bot vs. Custom Brand Bot (BYOB)
-
-Scriora provides two integration methods:
 1. **Mode 1: Shared Official Bot (`@ScrioraBot`):** 1-Click zero-setup option. No token creation or `@BotFather` configuration needed.
 2. **Mode 2: Custom Brand Bot (BYOB):** White-label option for enterprise teams who want their own custom bot name, avatar, and bio.
 
@@ -25,96 +23,56 @@ Scriora provides two integration methods:
 > - **1-Click Invite Helper:** In the Scriora dashboard, click the provided direct invite link (`https://t.me/<bot>?startchannel=true`) to add the bot with administrator permissions pre-configured.
 
 ### 📋 What We Need from the User (Step-by-Step Requirements)
-
-To connect Telegram to a workspace, the user provides:
-
-#### 1. Bot Token 🤖 (Custom Bot Mode Only)
-* **Purpose:** Authorizes Scriora to publish posts, register webhook events, and receive interactive governance commands.
-* **How to obtain (Mode 2 only):**
-  1. Open Telegram and search for the official [@BotFather](https://t.me/BotFather).
-  2. Send `/newbot` and follow the prompts to choose a display name and username (e.g., `my_brand_bot`).
-  3. Copy the **HTTP API Token** provided by BotFather (format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
-* **Where to provide:** In the workspace settings under **Connect Telegram** or via API `POST /v1/connect/telegram`.
-*(Skip this step if using the Shared Official Bot).*
-
-#### 2. Destination ID (Target Chat ID) 📢
-Scriora can publish to any of the following destinations without requiring random test messages:
-
-* **Public Channel:**
-  * Provide the public username directly (e.g. `@my_brand_channel` or `t.me/my_brand_channel`).
-  * Add the bot as an **Administrator** with only one permission: **"Post Messages"** (mandatory in both modes).
-* **Private Channel:**
-  * Requires the negative 13-digit ID (e.g. `-1001234567890`).
-  * **How to get the ID directly in seconds:**
-    1. **Using [@userinfobot](https://t.me/userinfobot):** Forward any message from the private channel to [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot). The bot will reply with `Forwarded from chat ID: -100...`.
-    2. **Using Telegram Web:** Open the channel in [web.telegram.org](https://web.telegram.org) and copy the numerical ID from the browser URL bar (`https://web.telegram.org/a/#-1001234567890`).
-  * Add the bot as an **Administrator** with **"Post Messages"** permission only.
-* **Supergroup or Forum:**
-  * Requires the negative ID (e.g. `-1009876543210`).
-  * **How to get the ID:** Forward a message from the group to [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) or copy from the Telegram Web URL bar.
-  * Bot only needs **"Send Messages"** permission.
-* **Direct Private Chat:**
-  * Open the bot in Telegram and press **Start** (`/start`).
-
-#### 3. Admin User ID & 1-Click Zero-Manual-Input Linking 🛡️
-* **Purpose:** Enables **Zero-Trust Whitelist Protection** and **Human-in-the-Loop Governance (§14)**:
-  * Only this user receives interactive approval cards with inline action buttons.
-  * Only this user can issue C2 commands (`/status`, `/accounts`, `/post`) from mobile.
-* **1-Click Connection (No Manual ID Input Needed):**
-  * In the web dashboard, click **[ 🔗 Connect Telegram with 1-Click ]** or scan the QR code.
-  * Tap **Start** in Telegram; the system captures your numerical ID and username automatically and grants admin privileges in under a second.
-* **Manual Discovery Fallback (Optional):**
-  * Open [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) on Telegram and send `/start` to retrieve your numerical User ID (e.g. `987654321`).
-* **Where to configure:** Automatically saved on 1-click start, or configured in `TELEGRAM_ADMIN_CHAT_ID`.
+1. **Bot Token 🤖 (Mode 2 only):** Created via [@BotFather](https://t.me/BotFather) with `/newbot`.
+2. **Destination ID (Target Chat ID) 📢:**
+   - Public Channel: `@channel_username`
+   - Private Channel: Negative 13-digit ID (e.g. `-1001234567890`) obtained via [@userinfobot](https://t.me/userinfobot) or Telegram Web.
+   - Supergroup/Forum: Negative ID (e.g. `-1009876543210`).
+3. **Admin User ID 🛡️:** Captured automatically via 1-Click QR/link (`https://t.me/your_bot?start=connect_<token>`) for Human-in-the-Loop (§14) mobile approvals.
 
 ---
 
-### 🛡️ Zero-Trust Permissions & Data Isolation Policy
+## 🎮 2. Discord Integration (Webhooks, Bot API v10, & Forum Channels)
 
-Scriora adheres to strict least-privilege principles:
+Scriora supports publishing to Discord announcement channels, general text channels, and community forum threads.
 
-| Permission | Requested by Bot? | Rationale & Guarantee |
-|---|:---:|---|
-| **Post Messages** | ✅ Yes | Required to publish approved content into channels |
-| **Read Member Messages** | ❌ **Strictly No** | Group Privacy Mode enabled; bot cannot read member conversations |
-| **Add / Delete Administrators** | ❌ **Strictly No** | No administrative rights requested or needed |
-| **Delete Others' Messages** | ❌ **Strictly No** | Bot only manages its own dispatch notices |
-| **Access Contacts or Personal Data**| ❌ **Technically Impossible** | Telegram Bot API does not provide access to user contacts |
+### 🤖 Dual Connection Modes: Instant Webhook vs. Official Bot API (BYOB)
 
----
+| Feature | Mode 1: Incoming Webhooks ⚡ | Mode 2: Discord Bot API v10 (BYOB) 🤖 |
+|---|:---:|:---:|
+| **Setup Time** | 10 seconds | 2 minutes |
+| **Server & Channel Discovery** | Manual URL copy | ⚡ **Automated 1-Click Dropdown Selection** |
+| **Custom Name & Avatar per Post** | ✅ Yes (`username`, `avatarUrl`) | Configured on Bot Application profile |
+| **Rich Embeds & Custom Colors** | ✅ Yes | ✅ Yes |
+| **Multi-Image Album Collages** | ✅ Yes (up to 4 images) | ✅ Yes (up to 4 images) |
+| **Forum Channels (Type 15)** | ⚠️ Limited | ✅ **Native** (creates new thread with `threadName`) |
+| **Interactive ActionRow Buttons (§14)**| ❌ Not supported by webhooks | ✅ **Yes** (Interactive Approval Buttons) |
 
-### 🎨 Customizable Approval Message & Button Labels
-
-Scriora allows workspace administrators to completely customize the approval card texts and inline button labels to match team preferences:
-
-* **Custom Button Texts:** Change `[ ✅ Approve & Publish ]` and `[ ❌ Reject & Cancel ]` to any custom labels (e.g. `[ 🚀 Publish Now ]` / `[ 🛑 Postpone ]`).
-* **Custom Headers & Footers:** Add personalized review guidelines, campaign tags, or compliance notices to the message body.
-* **Instant Dynamic Feedback:** When clicked, the message updates dynamically showing the exact decision and who approved it.
-
----
-
-## 🔒 Zero-Trust Security & Key Encryption
-
-All social tokens, bot secrets, and destination identifiers are stored in PostgreSQL using **AES-256-GCM Envelope Encryption** (`secret_envelopes` table).
-- Master encryption keys are never written to disk or logs.
-- Platform tokens are decrypted only in-memory at the exact millisecond of publication dispatch.
-- Every API request and callback query is checked against the workspace authorization perimeter.
+### 🛠️ Setup Steps:
+* **Mode 1 (Webhook):** Discord Channel ⚙️ -> **Integrations** -> **Webhooks** -> **New Webhook** -> **Copy Webhook URL**. Paste into Scriora dashboard.
+* **Mode 2 (Bot API):**
+  1. Open [Discord Developer Portal](https://discord.com/developers/applications) -> **New Application**.
+  2. Go to **Bot** tab -> **Reset Token** -> Copy token. Enable **Message Content Intent**.
+  3. Go to **OAuth2** -> **URL Generator** -> Select `bot` and `applications.commands` scopes -> Select permissions (`View Channels`, `Send Messages`, `Embed Links`, `Attach Files`). Permission integer: `397284550720`.
+  4. Authorize bot into your server. Scriora automatically discovers all available text, announcement, and forum channels!
 
 ---
 
-## 🔗 Connecting via Scriora API
+## 💼 3. LinkedIn Integration (Profiles, Company Pages, & PDF Carousels)
 
-```http
-POST /v1/connect/telegram
-Content-Type: application/json
-x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
+LinkedIn connects via official **OAuth 2.0 with PKCE (Proof Key for Code Exchange)**.
 
-{
-  "botToken": "123456789:ABCdefGHIjklMNOpqrsTUVwxyz",
-  "chatId": "-1001234567890",
-  "channelTitle": "Official Telegram Channel"
-}
-```
+### 🌟 Key Capabilities:
+* **Personal Profiles:** Publish founder thought leadership directly to your personal network (`urn:li:person`).
+* **Company Pages:** Connect multiple brand and regional organization pages (`urn:li:organization`).
+* **PDF Document Carousels:** Publish multi-page interactive slide decks (highest organic engagement format on LinkedIn).
+* **Automated 60-Day Token Refresh:** Background cron job automatically refreshes tokens expiring within 7 days.
+
+### 🛠️ Setup Steps:
+1. In the Scriora Dashboard, click **Connect LinkedIn**.
+2. Authorize via LinkedIn's secure OAuth 2.0 consent screen.
+3. Select whether to publish to your **Personal Profile** or choose from your managed **Company Pages**.
+4. All tokens are encrypted using **AES-256-GCM** with isolated secret envelopes.
 
 ---
 
@@ -123,18 +81,14 @@ x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 Scriora empowers teams with granular control over destinations and content variants:
 
 ### 1. Unlimited Accounts & Channels per Workspace
-* Connect **any number** of Telegram channels, supergroups, forums, and bot instances.
-* Connect **multiple LinkedIn accounts**: personal profiles (Founder, Executives) alongside multiple Company Pages (Brand HQ, Regional branches).
-* Every account is stored as an independent `SocialAccount` record with its own AES-256-GCM encrypted envelope.
+* Connect **any number** of Telegram channels, supergroups, and bots.
+* Connect **multiple Discord servers and channels** simultaneously.
+* Connect **multiple LinkedIn accounts**: personal profiles alongside multiple Company Pages.
+* Every destination is stored as an independent `SocialAccount` with its own AES-256-GCM encrypted envelope.
 
-### 2. Selective Destination Publishing
-* In the Web Dashboard, simply check or uncheck which channels or accounts will receive the post.
-* Programmatically, specify the target accounts in the `targets` array of `POST /v1/posts`.
-
-### 3. Tailor Copy Differently for Each Destination (`customBody`)
-* Avoid cookie-cutter posts: provide a specific message copy for each destination (`customBody`):
-  * **Telegram Channel:** Bullet points, emojis, call-to-action link.
-  * **Telegram Community Group:** Casual discussion prompt or poll.
-  * **LinkedIn Company Page:** Executive tone, hashtags, PDF slide deck.
-  * **LinkedIn Personal Profile:** Thought-leadership first-person perspective.
-* If a destination does not have a `customBody`, it seamlessly uses the universal post body.
+### 2. Tailor Copy Differently for Each Destination (`customBody`)
+Avoid cookie-cutter posts: provide a tailored message copy for each channel:
+* **Telegram Channel:** Bullet points, emojis, call-to-action link.
+* **Discord Announcement:** Rich embed with brand hex color (`#10B981`) and multi-image collage.
+* **LinkedIn Company Page:** Executive tone, industry hashtags, and PDF slide carousel.
+* **LinkedIn Personal Profile:** First-person founder narrative.
