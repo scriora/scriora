@@ -52,9 +52,41 @@ export const PublishResultSchema = z.object({
 
 export type PublishResult = z.infer<typeof PublishResultSchema>;
 
+export interface OAuthInitParams {
+  workspaceId: string;
+  redirectUri: string;
+  state: string;
+  codeVerifier: string;
+}
+
+export interface OAuthInitResult {
+  authorizationUrl: string;
+}
+
+export interface OAuthCallbackParams {
+  code: string;
+  codeVerifier: string;
+  redirectUri: string;
+}
+
+export interface TokenExchangeResult {
+  accessToken: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  refreshTokenExpiresIn?: number;
+  externalAccountId: string;
+  accountName: string;
+  rawPayload?: Record<string, unknown>;
+}
+
 export interface PlatformAdapter {
   readonly platform: SocialPlatformType;
   getCapabilities(): PlatformCapabilities;
   publish(request: PublishRequest): Promise<PublishResult>;
   verify(externalPostId: string): Promise<boolean>;
+  getAuthorizationUrl?(params: OAuthInitParams): Promise<OAuthInitResult>;
+  exchangeCodeForTokens?(params: OAuthCallbackParams): Promise<TokenExchangeResult>;
+  refreshAccessToken?(
+    refreshToken: string
+  ): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }>;
 }

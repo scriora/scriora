@@ -6,10 +6,11 @@
 
 import { serve } from 'inngest/node';
 import { inngest } from './inngest.js';
+import { outboxSweepJob } from './jobs/outbox-sweep.job.js';
+import { publishJob } from './jobs/publish.job.js';
+import { verifyJob } from './jobs/verify.job.js';
 
-// Jobs will be registered here in Phase 1
-// Reference: scriora-docs/architecture/SCRIORA_STATE_AND_ERROR_MODEL.md
-const functions: [] = [];
+const functions = [publishJob, verifyJob, outboxSweepJob];
 
 const handler = serve({
   client: inngest,

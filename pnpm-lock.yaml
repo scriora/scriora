@@ -23,6 +23,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fastify/cookie':
+        specifier: ^11.1.2
+        version: 11.1.2
       '@fastify/cors':
         specifier: ^11.3.0
         version: 11.3.0
@@ -41,15 +44,24 @@ importers:
       fastify:
         specifier: ^5.12.3
         version: 5.12.3
+      fastify-plugin:
+        specifier: ^6.0.0
+        version: 6.0.0
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
       scriora-core:
         specifier: workspace:*
         version: link:../../packages/core
+      scriora-social:
+        specifier: workspace:*
+        version: link:../../packages/social
       zod:
         specifier: ^4.6.2
         version: 4.6.2
+      zod-to-json-schema:
+        specifier: ^3.25.2
+        version: 3.25.2(zod@4.6.2)
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.5.13
@@ -1042,6 +1054,9 @@ packages:
 
   '@fastify/ajv-compiler@4.0.6':
     resolution: {integrity: sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==}
+
+  '@fastify/cookie@11.1.2':
+    resolution: {integrity: sha512-Dtrpk/YOGUsbRMvP/8ZqPpwnMRv0qSqodFdoQ2B589Obc7jw4s4Qla+cV72Bsm7WsZJnqlYFX/i7uSBq0xzg6g==}
 
   '@fastify/cors@11.3.0':
     resolution: {integrity: sha512-ggQGua+xHv1MvePbPr0v//xLYEsCXbWspquXCJS9Ot5YoRXq8J8ZWzHnxDBVnbtXosvistXo6LtNzOJswf64Fw==}
@@ -6347,6 +6362,11 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.1.4
+
+  '@fastify/cookie@11.1.2':
+    dependencies:
+      cookie: 2.0.1
+      fastify-plugin: 6.0.0
 
   '@fastify/cors@11.3.0':
     dependencies:

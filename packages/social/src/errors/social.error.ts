@@ -32,3 +32,25 @@ export class NormalizedSocialError extends Error {
     }
   }
 }
+
+export class PlatformError extends Error {
+  public readonly code: string;
+  public readonly retryable: boolean;
+  public readonly platformCode?: string | undefined;
+  public readonly retryAfterMs?: number | undefined;
+
+  constructor(options: {
+    message: string;
+    code: string;
+    retryable?: boolean | undefined;
+    platformCode?: string | undefined;
+    retryAfterMs?: number | undefined;
+  }) {
+    super(options.message);
+    this.name = 'PlatformError';
+    this.code = options.code;
+    this.retryable = options.retryable ?? false;
+    this.platformCode = options.platformCode;
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}

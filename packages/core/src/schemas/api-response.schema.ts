@@ -11,12 +11,7 @@ import { z } from 'zod';
 export const PaginationQuerySchema = z.object({
   /** Opaque cursor from previous response meta.nextCursor */
   cursor: z.string().optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
   /** Sort direction */
   order: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -65,13 +60,15 @@ export const ErrorResponseSchema = z.object({
     message: z.string(),
     retryable: z.boolean(),
     retryAfter: z.number().int().optional(),
-    details: z.array(
-      z.object({
-        field: z.string().optional(),
-        message: z.string(),
-        code: z.string().optional(),
-      })
-    ).optional(),
+    details: z
+      .array(
+        z.object({
+          field: z.string().optional(),
+          message: z.string(),
+          code: z.string().optional(),
+        })
+      )
+      .optional(),
   }),
   meta: ResponseMetaSchema.pick({ requestId: true, timestamp: true }),
 });

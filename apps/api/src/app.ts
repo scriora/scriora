@@ -1,18 +1,37 @@
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { CreatePublicationSchema, createPublicationWithOutbox, prisma } from 'scriora-core';
-import { ZodError } from 'zod';
+import jwt from '@fastify/jwt';
+import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
+import { prisma } from 'scriora-core';
+import { err } from './lib/response.js';
+import { rateLimitPlugin } from './plugins/rate-limit.js';
+import { requestIdPlugin } from './plugins/request-id.js';
+import { swaggerPlugin } from './plugins/swagger.js';
+import { approvalRoutes } from './routes/v1/approvals/index.js';
+import { authRoutes } from './routes/v1/auth/index.js';
+import { connectRoutes } from './routes/v1/connect/index.js';
+import { postRoutes } from './routes/v1/posts/index.js';
+import { socialAccountRoutes } from './routes/v1/social-accounts/index.js';
+import { workspaceRoutes } from './routes/v1/workspaces/index.js';
 
 export function buildApp(): FastifyInstance {
+  const isTest = process.env.NODE_ENV === 'test';
+
   const app = Fastify({
-    logger: process.env.NODE_ENV === 'test' ? false : { level: 'info' },
+    logger: !isTest,
   });
 
-  app.register(cors, {
-    origin: true,
+  // 1. Core Plugins
+  app.register(cors, { origin: true, credentials: true });
+  app.register(cookie);
+  app.register(jwt, {
+    secret: process.env.JWT_SECRET || 'dev_secret_at_least_32_characters_long_1234567890',
   });
+  app.register(requestIdPlugin);
+  app.register(swaggerPlugin);
+  app.register(rateLimitPlugin);
 
-  // 1. Health check route
+  // 2. Health & Readiness Routes (§8.11)
   app.get('/health', async () => ({
     status: 'ok',
     service: 'scriora-api',
@@ -20,45 +39,104 @@ export function buildApp(): FastifyInstance {
     timestamp: new Date().toISOString(),
   }));
 
-  // 2. Publication creation route
-  app.post('/api/v1/publications', async (request, reply) => {
+  app.get('/ready', async (request, reply) => {
     try {
-      const parsedBody = CreatePublicationSchema.parse(request.body);
-      const result = await createPublicationWithOutbox(prisma, parsedBody);
+      await prisma.$queryRaw`SELECT 1`;
+      return { status: 'ready', database: 'connected' };
+    } catch {
+      return reply.status(503).send({ status: 'not_ready', database: 'disconnected' });
+    }
+  });
+
+  // 3. API v1 Route Groups
+  app.register(authRoutes, { prefix: '/v1/auth' });
+  app.register(workspaceRoutes, { prefix: '/v1/workspaces' });
+  app.register(connectRoutes, { prefix: '/v1/connect' });
+  app.register(socialAccountRoutes, { prefix: '/v1/social-accounts' });
+  app.register(postRoutes, { prefix: '/v1/posts' });
+  app.register(approvalRoutes, { prefix: '/v1/approve' });
+
+  // Legacy route bridge for backward compatibility
+  app.post('/api/v1/publications', async (request, reply) => {
+    const scrioraCore = await import('scriora-core');
+    try {
+      const parsedBody = scrioraCore.CreatePublicationSchema.parse(request.body);
+      const result = await scrioraCore.createPublicationWithOutbox(prisma, parsedBody);
       return reply.status(201).send({
         success: true,
         data: result,
       });
-    } catch (err: unknown) {
-      if (err instanceof ZodError) {
+    } catch (e: unknown) {
+      const errObj = e as { name?: string; message?: string; issues?: unknown[] } | null;
+      if (errObj?.name === 'ZodError') {
         return reply.status(422).send({
           success: false,
           error: 'VALIDATION_ERROR',
-          details: err.issues,
+          details: errObj.issues,
         });
       }
-
-      if (err instanceof Error) {
-        if (
-          err.message === 'CONTENT_VARIANT_NOT_FOUND_IN_WORKSPACE' ||
-          err.message === 'SOCIAL_ACCOUNT_NOT_FOUND_IN_WORKSPACE'
-        ) {
-          return reply.status(404).send({
-            success: false,
-            error: err.message,
-          });
-        }
-        return reply.status(500).send({
+      if (
+        errObj?.message === 'CONTENT_VARIANT_NOT_FOUND_IN_WORKSPACE' ||
+        errObj?.message === 'SOCIAL_ACCOUNT_NOT_FOUND_IN_WORKSPACE'
+      ) {
+        return reply.status(404).send({
           success: false,
-          error: err.message,
+          error: errObj.message,
         });
       }
-
       return reply.status(500).send({
         success: false,
-        error: 'INTERNAL_SERVER_ERROR',
+        error: errObj?.message || 'INTERNAL_SERVER_ERROR',
       });
     }
+  });
+
+  // 4. Global Error Handler (RFC 7807/9457 compliant)
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    request.log.error(error);
+
+    const errWithValidation = error as {
+      validation?: Array<{
+        instancePath?: string;
+        message?: string;
+        params?: { missingProperty?: string };
+      }>;
+    };
+    if (errWithValidation.validation) {
+      return reply.status(400).send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          error.message || 'Validation error',
+          request.id,
+          false,
+          errWithValidation.validation.map((v) => ({
+            field: v.instancePath || v.params?.missingProperty,
+            message: v.message || 'Invalid value',
+          }))
+        )
+      );
+    }
+
+    const statusCode =
+      typeof error.statusCode === 'number' && error.statusCode >= 400 && error.statusCode < 600
+        ? error.statusCode
+        : 500;
+    const isInternal = statusCode >= 500;
+
+    return reply
+      .status(statusCode)
+      .send(
+        err(
+          error.code || 'INTERNAL_SERVER_ERROR',
+          isInternal ? 'INTERNAL_ERROR' : 'BUSINESS_RULE_VIOLATION',
+          isInternal && process.env.NODE_ENV === 'production'
+            ? 'An unexpected error occurred'
+            : error.message || 'Server error',
+          request.id,
+          isInternal
+        )
+      );
   });
 
   return app;

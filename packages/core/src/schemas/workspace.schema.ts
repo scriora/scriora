@@ -26,7 +26,13 @@ export const WorkspacePurposeSchema = z.enum(['PERSONAL', 'WORK', 'CLIENT', 'AGE
 
 // ── Member Role ───────────────────────────────────────────────────────────────
 
-export const WorkspaceRoleSchema = z.enum(['OWNER', 'ADMIN', 'EDITOR', 'VIEWER', 'EXTERNAL_APPROVER']);
+export const WorkspaceRoleSchema = z.enum([
+  'OWNER',
+  'ADMIN',
+  'EDITOR',
+  'VIEWER',
+  'EXTERNAL_APPROVER',
+]);
 
 // ── Request Schemas ───────────────────────────────────────────────────────────
 
