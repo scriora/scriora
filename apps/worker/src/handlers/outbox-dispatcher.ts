@@ -1,5 +1,6 @@
 import type { PrismaClient } from 'scriora-core';
 import {
+  DiscordAdapter,
   LinkedInAdapter,
   platformRegistry,
   type SocialPlatformType,
@@ -23,6 +24,11 @@ function ensureAdaptersRegistered() {
   if (!platformRegistry.has('TELEGRAM')) {
     try {
       platformRegistry.register(new TelegramAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('DISCORD')) {
+    try {
+      platformRegistry.register(new DiscordAdapter());
     } catch {}
   }
 }

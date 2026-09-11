@@ -10,4 +10,6 @@ export * from './platforms/telegram/telegram-polling.runner.js';
 export * from './platforms/x/mock.adapter.js';
 export * from './platforms/x/x.adapter.js';
 export * from './platforms/x/x.oauth.js';
+export * from './platforms/discord/discord.adapter.js';
+export * from './platforms/discord/mock.adapter.js';
 export * from './registry/platform.registry.js';

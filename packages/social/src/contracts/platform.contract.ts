@@ -11,6 +11,7 @@ export const SocialPlatformTypeSchema = z.enum([
   'PINTEREST',
   'BLUESKY',
   'TELEGRAM',
+  'DISCORD',
 ]);
 
 export type SocialPlatformType = z.infer<typeof SocialPlatformTypeSchema>;

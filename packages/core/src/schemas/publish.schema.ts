@@ -19,6 +19,7 @@ export const SocialPlatformSchema = z.enum([
   'PINTEREST',
   'BLUESKY',
   'TELEGRAM',
+  'DISCORD',
 ]);
 
 // ── Media Reference ────────────────────────────────────────────────────────────
@@ -70,6 +71,21 @@ export const TikTokOptionsSchema = z.object({
   isSponsored: z.boolean().default(false),
 });
 
+export const DiscordOptionsSchema = z.object({
+  /** Custom embed title */
+  embedTitle: z.string().max(256).optional(),
+  /** Custom embed description (markdown supported) */
+  embedDescription: z.string().max(4096).optional(),
+  /** Custom embed color in hex (e.g. #5865F2) or integer */
+  embedColor: z.union([z.string().regex(/^#?[0-9a-fA-F]{6}$/), z.number().int()]).optional(),
+  /** Custom embed footer text */
+  embedFooter: z.string().max(2048).optional(),
+  /** Override username for webhook posts */
+  username: z.string().max(80).optional(),
+  /** Override avatar URL for webhook posts */
+  avatarUrl: z.string().url().optional(),
+});
+
 export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('LINKEDIN'), options: LinkedInOptionsSchema }),
   z.object({ platform: z.literal('X'), options: XOptionsSchema }),
@@ -81,6 +97,7 @@ export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('BLUESKY'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('PINTEREST'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('TELEGRAM'), options: z.object({}).passthrough() }),
+  z.object({ platform: z.literal('DISCORD'), options: DiscordOptionsSchema }),
 ]);
 
 // ── Publish Target ─────────────────────────────────────────────────────────────

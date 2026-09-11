@@ -57,6 +57,7 @@ enum SocialPlatform {
   PINTEREST
   BLUESKY
   TELEGRAM
+  DISCORD
 }
 
 enum SocialAccountStatus {
