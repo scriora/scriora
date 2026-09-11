@@ -280,3 +280,30 @@ pnpm --filter scriora-api test
 # Full typecheck across the monorepo
 pnpm turbo run typecheck
 ```
+
+---
+
+## 9. 🖼️ Media & Image Upload Architecture
+
+Scriora supports rich media across three distinct tiers:
+
+### 1. Web Dashboard (Phase 10 - End-User Experience)
+* **Drag-and-Drop Composer:** Users upload images (PNG, JPG, WebP) or videos directly from their desktop.
+* **Storage Engine:** Assets are securely uploaded to Supabase Storage / S3 buckets with automated thumbnail generation.
+* **Omnichannel Preview:** Real-time visual mockup showing how the image renders on Telegram channels, LinkedIn feed, X cards, and Instagram grids before publishing.
+
+### 2. REST API Pipeline (`POST /v1/posts`)
+* Programmatic dispatch accepts `mediaUrls: string[]` (up to 10 media assets):
+  ```json
+  {
+    "contentDraft": {
+      "title": "Launch Update",
+      "body": "Check out our new feature!",
+      "mediaUrls": ["https://cdn.yourdomain.com/uploads/banner.png"]
+    },
+    "platforms": ["TELEGRAM", "LINKEDIN"]
+  }
+  ```
+
+### 3. Mobile Telegram C2 Upload
+* The administrator can send a photo directly from their smartphone gallery to the C2 bot with a caption; the bot processes and broadcasts the photo across all connected workspace channels.
