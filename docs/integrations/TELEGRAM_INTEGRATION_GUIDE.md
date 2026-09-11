@@ -52,18 +52,50 @@ flowchart TD
 
 ---
 
-## 2. 📋 What We Need from the User (Step-by-Step Onboarding)
+## 2. 📋 Bot Modes & What We Need from the User
 
-To connect Telegram to a workspace and enable multi-destination publishing and centralized mobile C2 governance, the user only needs to provide three elements:
+Scriora supports two flexible connection modes to accommodate both instant setup and full enterprise white-labeling:
 
-### 1. Bot Token 🤖
+### 🤖 Dual Connection Modes: Shared Official Bot vs. Custom Brand Bot (BYOB)
+
+| Feature | Mode 1: Shared Official Bot (`@ScrioraBot`) | Mode 2: Custom Brand Bot (BYOB via `@BotFather`) |
+|---|---|---|
+| **Target Audience** | Fast onboarding, solo creators, quick tests | Agencies, enterprises, branded communities |
+| **Bot Token Setup** | ⚡ **Zero Setup** (Managed securely by Scriora) | 🔑 User provides token from [@BotFather](https://t.me/BotFather) |
+| **Bot Name & Avatar** | Official Scriora Bot branding | 100% custom brand name, logo, and bio |
+| **Required Permissions** | 🛡️ **Administrator ("Post Messages")** in Channels | 🛡️ **Administrator ("Post Messages")** in Channels |
+| **Group Permissions** | 💬 **"Send Messages"** (Member or Moderator) | 💬 **"Send Messages"** (Member or Moderator) |
+
+> [!IMPORTANT]
+> ### 🚨 Mandatory Administrator / Moderator Requirement (Applies to BOTH Modes)
+> **Regardless of whether you choose the Shared Official Bot or your own Custom Bot:**
+> 1. **For Telegram Channels (Public or Private):**  
+>    You **MUST** add the bot to the channel and promote it to **Administrator** with the **"Post Messages"** permission toggled **ON**.  
+>    *Why?* Telegram's protocol physically prohibits bots from posting into channels as standard members. If the bot is not an Administrator with "Post Messages" rights, Telegram's API immediately returns an unrecoverable error:  
+>    `403 Forbidden: bot is not a member of the channel` or `400 Bad Request: need administrator rights in the channel to post`.
+> 2. **For Telegram Supergroups & Discussion Forums:**  
+>    Add the bot to the group with **"Send Messages"** permissions. If your group restricts posting to admins/moderators only, you must promote the bot to **Administrator/Moderator** as well.
+> 3. **Effortless 1-Click Onboarding in Scriora UI:**  
+>    The Scriora Dashboard generates pre-configured direct invite links:  
+>    - Channel invite: `https://t.me/<bot_username>?startchannel=true`  
+>    - Group invite: `https://t.me/<bot_username>?startgroup=true`  
+>    Clicking this link in your browser or phone opens Telegram directly with the channel/group selector and pre-selects the "Post Messages" permission.
+
+---
+
+### Step-by-Step Requirements
+
+To connect Telegram to a workspace and enable multi-destination publishing and centralized mobile C2 governance, the user provides:
+
+### 1. Bot Token 🤖 (Custom Bot Mode Only)
 * **Definition:** The secret API key that authorizes Scriora to broadcast content, register webhook events, and receive governance commands.
-* **How to Obtain:**
+* **How to Obtain (Mode 2 only):**
   1. Open Telegram and search for the official [@BotFather](https://t.me/BotFather).
   2. Send the command: `/newbot`.
   3. Enter a display name for the bot (e.g. `Acme Content Publisher`) and a unique username ending in `bot` (e.g. `acme_content_pub_bot`).
   4. Copy the **HTTP API Token** (format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
 * **Where to Enter:** In the workspace settings under **Connect Telegram** or via API endpoint `POST /v1/connect/telegram`.
+*(Note: If using Mode 1 Shared Bot, this step is skipped entirely).*
 
 ---
 
@@ -72,7 +104,7 @@ Scriora supports direct publishing across all chat and channel topologies withou
 
 #### A. Public Channels
 * **Required Input:** Public channel username directly (e.g. `@my_brand_channel` or `t.me/my_brand_channel`).
-* **Bot Permission:** Add the bot as an **Administrator** with only one permission enabled: **"Post Messages"**.
+* **Mandatory Bot Role:** Add the bot as an **Administrator** with only one permission enabled: **"Post Messages"** (required in both Shared and Custom bot modes).
 * **Discovery:** No negative ID is needed; the system automatically resolves the public username.
 
 #### B. Private Channels

@@ -11,24 +11,38 @@ Scriora connects with diverse social platforms using secure, zero-trust token ma
 
 Telegram integration in Scriora supports **multi-destination publishing** (private chats, public/private channels, and supergroups) as well as **interactive Command & Control (C2)** for mobile approvals.
 
+### 🤖 Dual Connection Modes: Shared Official Bot vs. Custom Brand Bot (BYOB)
+
+Scriora provides two integration methods:
+1. **Mode 1: Shared Official Bot (`@ScrioraBot`):** 1-Click zero-setup option. No token creation or `@BotFather` configuration needed.
+2. **Mode 2: Custom Brand Bot (BYOB):** White-label option for enterprise teams who want their own custom bot name, avatar, and bio.
+
+> [!IMPORTANT]
+> ### 🚨 Mandatory Administrator / Moderator Requirement (In Both Modes)
+> **Regardless of whether you connect using the Shared Official Bot or your Custom Bot:**
+> - **Channels (Public or Private):** You **MUST** add the bot to your channel and promote it to **Administrator** with the **"Post Messages"** permission enabled. Telegram's protocol forbids regular members from posting into channels. If this step is missed, Telegram will reject publishing attempts with `403 Forbidden` or `chat not found`.
+> - **Groups & Forums:** You must add the bot as a member with **"Send Messages"** permissions (or as an Administrator/Moderator if your group restricts posting).
+> - **1-Click Invite Helper:** In the Scriora dashboard, click the provided direct invite link (`https://t.me/<bot>?startchannel=true`) to add the bot with administrator permissions pre-configured.
+
 ### 📋 What We Need from the User (Step-by-Step Requirements)
 
-To connect Telegram to a workspace, the user only needs to provide three elements:
+To connect Telegram to a workspace, the user provides:
 
-#### 1. Bot Token 🤖
+#### 1. Bot Token 🤖 (Custom Bot Mode Only)
 * **Purpose:** Authorizes Scriora to publish posts, register webhook events, and receive interactive governance commands.
-* **How to obtain:**
+* **How to obtain (Mode 2 only):**
   1. Open Telegram and search for the official [@BotFather](https://t.me/BotFather).
   2. Send `/newbot` and follow the prompts to choose a display name and username (e.g., `my_brand_bot`).
   3. Copy the **HTTP API Token** provided by BotFather (format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
 * **Where to provide:** In the workspace settings under **Connect Telegram** or via API `POST /v1/connect/telegram`.
+*(Skip this step if using the Shared Official Bot).*
 
 #### 2. Destination ID (Target Chat ID) 📢
 Scriora can publish to any of the following destinations without requiring random test messages:
 
 * **Public Channel:**
   * Provide the public username directly (e.g. `@my_brand_channel` or `t.me/my_brand_channel`).
-  * Add the bot as an **Administrator** with only one permission: **"Post Messages"**.
+  * Add the bot as an **Administrator** with only one permission: **"Post Messages"** (mandatory in both modes).
 * **Private Channel:**
   * Requires the negative 13-digit ID (e.g. `-1001234567890`).
   * **How to get the ID directly in seconds:**
