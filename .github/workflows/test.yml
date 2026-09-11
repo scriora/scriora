@@ -26,10 +26,8 @@ jobs:
           POSTGRES_DB: scriora_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-        volumes:
-          - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d scriora_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -64,6 +62,8 @@ jobs:
             filter: "scriora-agent"
     steps:
       - uses: actions/checkout@v4
+      - name: Initialize PostgreSQL extensions
+        run: PGPASSWORD=postgres psql -h 127.0.0.1 -U postgres -d scriora_test -f docker/init-pgvector.sql
       - uses: pnpm/action-setup@v6
         with:
           version: "11.21.0"
