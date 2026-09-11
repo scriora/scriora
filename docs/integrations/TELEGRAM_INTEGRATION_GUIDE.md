@@ -52,109 +52,109 @@ flowchart TD
 
 ---
 
-## 2. 📋 What We Need from the User (ما نحتاجه من المستخدم خطوة بخطوة)
+## 2. 📋 What We Need from the User (Step-by-Step Onboarding)
 
-لربط تيليجرام بنجاح في مساحة العمل والاستفادة من النشر متعدد الوجهات والتحكم المركزي، يحتاج المستخدم إلى تزويد المنصة بثلاثة عناصر أساسية فقط:
+To connect Telegram to a workspace and enable multi-destination publishing and centralized mobile C2 governance, the user only needs to provide three elements:
 
-### 1. توكن البوت (Bot Token) 🤖
-* **التعريف:** المفتاح السري الذي يسمح لـ Scriora بإرسال المنشورات واستقبال الأوامر والاعتمادات.
-* **كيف يحصل عليه المستخدم:**
-  1. يفتح تطبيق تيليجرام ويبحث عن البوت الرسمي: [@BotFather](https://t.me/BotFather).
-  2. يرسل الأمر: `/newbot`.
-  3. يحدد اسماً للبوت (مثلاً: `My Company Publisher`) واسم مستخدم ينتهي بـ `bot` (مثلاً: `my_company_pub_bot`).
-  4. يقوم بنسخ الـ **HTTP API Token** (يبدو بهذا الشكل: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
-* **أين يُدخل في Scriora:** في معالج الربط بالواجهة أو حقل `botToken` في طلب `POST /v1/connect/telegram`.
-
----
-
-### 2. معرّف وجهة النشر (Destination / Chat ID) 📢
-Scriora تدعم النشر في كافة أنواع المحادثات والقنوات دون الحاجة لإرسال رسائل عشوائية:
-
-#### أ. القنوات العامة (Public Channels)
-* **المطلوب:** معرف القناة العام فقط (مثال: `@my_channel` أو رابط `t.me/my_channel`).
-* **صلاحية البوت:** إضافة البوت إلى القناة كـ **مشرف (Administrator)** وتفعيل صلاحية وحيدة: **نشر الرسائل (Post Messages)**.
-* **الحصول على المعرف:** لا حاجة لأي رقم سالب! يكفي كتابة اسم المستخدم العام مثل `@my_company_news`.
-
-#### ب. القنوات الخاصة (Private Channels)
-* **المطلوب:** المعرف الرقمي السالب (يبدأ بـ `-100...` مثل `-1001234567890`).
-* **صلاحية البوت:** مشرف (Administrator) بصلاحية **نشر الرسائل (Post Messages)** فقط.
-* **كيفية استخراج المعرف مباشرة وبسهولة:**
-  1. **الطريقة الأولى (الأسهل عبر @userinfobot):**
-     * قم بإعادة توجيه (Forward) أي رسالة من القناة الخاصة إلى البوت الشهير [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot).
-     * سيرد عليك البوت فوراً بالمعرف: `Forwarded from chat ID: -1001234567890`.
-  2. **الطريقة الثانية (عبر متصفح الويب Telegram Web):**
-     * افتح القناة عبر [web.telegram.org](https://web.telegram.org).
-     * انظر إلى شريط العنوان في المتصفح، ستجد الرابط بالشكل: `https://web.telegram.org/a/#-1001234567890`. انسخ الرقم `-1001234567890` مباشرة.
-
-#### ج. المجموعات والمنتديات (Supergroups & Forums)
-* **المطلوب:** معرّف المجموعة السالب (مثال: `-1009876543210`).
-* **صلاحية البوت:** عضو عادي أو مشرف بصلاحية **إرسال الرسائل (Send Messages)** فقط.
-* **كيفية استخراج المعرف مباشرة:**
-  1. أضف [@userinfobot](https://t.me/userinfobot) إلى المجموعة مؤقتاً وسيعرض لك المعرف فوراً ثم احذفه.
-  2. أو قم بإعادة توجيه (Forward) رسالة من المجموعة إلى [@userinfobot](https://t.me/userinfobot).
-  3. أو انسخ المعرف من رابط المتصفح في Telegram Web.
-
-#### د. المحادثات المباشرة (Direct Personal Chat)
-* يفتح المستخدم رابط البوت في تيليجرام ويضغط على زر `/start`.
+### 1. Bot Token 🤖
+* **Definition:** The secret API key that authorizes Scriora to broadcast content, register webhook events, and receive governance commands.
+* **How to Obtain:**
+  1. Open Telegram and search for the official [@BotFather](https://t.me/BotFather).
+  2. Send the command: `/newbot`.
+  3. Enter a display name for the bot (e.g. `Acme Content Publisher`) and a unique username ending in `bot` (e.g. `acme_content_pub_bot`).
+  4. Copy the **HTTP API Token** (format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`).
+* **Where to Enter:** In the workspace settings under **Connect Telegram** or via API endpoint `POST /v1/connect/telegram`.
 
 ---
 
-### 3. معرّف حساب المدير للتحكم والاعتماد (Admin Telegram ID) 🛡️
-* **التعريف:** رقم الـ User ID الخاص بحساب تيليجرام الشخصي للمدير أو المسؤول التنفيذي.
-* **الغرض الأمني (Zero-Trust Whitelist):**
-  * حصر استلام بطاقات الموافقة البشرية التفاعلية بنقرة واحدة (§14 Governance).
-  * حصر تنفيذ أوامر الكونسول الحساسة (`/status`, `/accounts`, `/post`) على رقمه، وحظر وتجاهل أي شخص آخر.
-* **كيف يحصل عليه المستخدم في 5 ثوانٍ:**
-  * يفتح البوت الرسمي [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) ويضغط `/start`.
-  * يظهر له معرف حسابه فوراً: `Id: 987654321`.
-* **أين يُحفظ:** في متغير البيئة `TELEGRAM_ADMIN_CHAT_ID` أو إعدادات مساحة العمل في لوحة التحكم.
+### 2. Destination ID (Target Chat ID) 📢
+Scriora supports direct publishing across all chat and channel topologies without requiring random test messages:
+
+#### A. Public Channels
+* **Required Input:** Public channel username directly (e.g. `@my_brand_channel` or `t.me/my_brand_channel`).
+* **Bot Permission:** Add the bot as an **Administrator** with only one permission enabled: **"Post Messages"**.
+* **Discovery:** No negative ID is needed; the system automatically resolves the public username.
+
+#### B. Private Channels
+* **Required Input:** Negative 13-digit integer ID (starts with `-100...`, e.g. `-1001234567890`).
+* **Bot Permission:** Add the bot as an **Administrator** with **"Post Messages"** permission only.
+* **Direct ID Discovery (Instant & Painless):**
+  1. **Method 1 (Fastest via [@userinfobot](https://t.me/userinfobot)):**
+     * Forward any post from the private channel to [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot).
+     * The bot immediately replies with: `Forwarded from chat ID: -1001234567890`.
+  2. **Method 2 (Via Telegram Web):**
+     * Open the channel in your browser at [web.telegram.org](https://web.telegram.org).
+     * Inspect the URL in your browser address bar: `https://web.telegram.org/a/#-1001234567890`. Copy the `-1001234567890` string directly.
+
+#### C. Supergroups & Forums
+* **Required Input:** Negative group ID (e.g. `-1009876543210`).
+* **Bot Permission:** Member or Administrator with **"Send Messages"** permission only.
+* **Direct ID Discovery:**
+  1. Add [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) to the group temporarily; it outputs the Group ID immediately, then remove it.
+  2. Alternatively, forward any message from the group to [@userinfobot](https://t.me/userinfobot).
+  3. Or copy the group ID directly from the Telegram Web URL bar.
+
+#### D. Direct Personal Chat
+* The administrator opens the bot directly in Telegram and taps **Start** (`/start`).
 
 ---
 
-### 4. 🛡️ بيان الصلاحيات والخصوصية الصارمة (Zero-Trust Permissions Policy)
+### 3. Admin User ID (C2 & Governance Whitelist) 🛡️
+* **Definition:** The numeric Telegram User ID belonging to the executive administrator.
+* **Security Function (Zero-Trust Whitelist):**
+  * Restricts delivery of interactive Human Governance approval cards (§14).
+  * Exclusively authorizes C2 management commands (`/status`, `/accounts`, `/post`), blocking all unauthorized senders.
+* **Instant Discovery (5 Seconds):**
+  * Open the official [@userinfobot](https://t.me/userinfobot) (https://t.me/userinfobot) on Telegram and send `/start`.
+  * The bot outputs your numerical User ID instantly (e.g. `Id: 987654321`).
+* **Storage:** Configured in `TELEGRAM_ADMIN_CHAT_ID` or workspace settings.
 
-تلتزم منصة Scriora بأعلى معايير الخصوصية والأمان الإفصاحي الصارم للعملاء:
+---
 
-| الصلاحية | مطلوب للبوت؟ | الغرض التقني |
+### 4. 🛡️ Least-Privilege & Zero-Trust Permissions Policy
+
+Scriora strictly enforces the principle of least privilege across all integrated bots:
+
+| Permission | Requested by Scriora? | Operational Justification |
 |---|:---:|---|
-| **نشر الرسائل (Post Messages)** | ✅ نعم | لنشر التحديثات المعتمدة فقط في القنوات والمجموعات |
-| **قراءة الرسائل ومحادثات الأعضاء** | ❌ **مرفوض قطعاً** | خاصية Privacy Mode مفعلة؛ لا يمكن للبوت قراءة محادثاتك |
-| **إضافة أو حذف مشرفين آخرين** | ❌ **غير مطلوب** | لا تطلب المنصة أي صلاحيات إدارية عليا |
-| **حذف رسائل الأعضاء الآخرين** | ❌ **غير مطلوب** | المنصة لا تحذف ولا تعدل رسائل أي شخص آخر |
-| **الوصول للأسماء أو جهات الاتصال** | ❌ **مستحيل تقنياً** | لا يملك البوت أي وصول لجهات الاتصال الخاصة بالمستخدم |
+| **Post Messages** | ✅ Yes | Required solely to publish approved content to target channels |
+| **Read Member Messages** | ❌ **Strictly Prohibited** | Group Privacy Mode is enabled; the bot cannot access chat history |
+| **Add / Remove Administrators** | ❌ **Not Requested** | Scriora does not request or require elevated channel administrative rights |
+| **Delete Others' Messages** | ❌ **Not Requested** | Scriora never modifies or deletes third-party messages |
+| **Access User Contacts / Personal Data** | ❌ **Technically Impossible** | Telegram Bot API does not expose user contact lists or private information |
 
 ---
 
-### 5. 🎨 التخصيص الكامل لرسائل وأزرار الاعتماد (Customizable Approval Cards & Buttons)
+### 5. 🎨 Customizable Approval Cards & Action Buttons
 
-تتيح منصة Scriora للمستخدم وفريق العمل **تخصيص كافة نصوص بطاقة الاعتماد وأزرارها** لتلائم لغة وهوية الفريق:
+Scriora provides workspace administrators with **complete customization of approval card content and action button labels**:
 
 ```typescript
-// تخصيص بطاقة الاعتماد التفاعلية (§14)
+// Customizing an interactive Human Governance card (§14)
 await telegramBotService.sendApprovalRequest({
   chatId: "987654321",
   approvalId: "app_123",
   token: "token_secure_xyz",
-  title: "حملة إطلاق المنتج الجديد",
-  body: "يسرنا إطلاق النسخة التجريبية اليوم لجميع عملائنا!",
+  title: "New Product Launch Announcement",
+  body: "We are thrilled to unveil our v2.0 platform upgrade today!",
   platform: "TELEGRAM",
-  
-  // 1. تخصيص عنوان ومقدمة الرسالة:
-  customHeader: "✨ <b>طلب موافقة فريق التسويق قبل النشر:</b>",
-  
-  // 2. تخصيص نص زر الموافقة:
-  approveButtonText: "🚀 موافقة ونشر الآن",
-  
-  // 3. تخصيص نص زر الرفض:
-  rejectButtonText: "🛑 رفض وتعديل المحتوى",
-  
-  // 4. تخصيص تذييل الرسالة:
-  customFooter: "يرجى مراجعة الصياغة والتأكيد من هاتفك.",
+
+  // 1. Custom header text:
+  customHeader: "✨ <b>Marketing Team Review Gate:</b>",
+
+  // 2. Custom approve button label:
+  approveButtonText: "🚀 Publish to All Channels",
+
+  // 3. Custom reject button label:
+  rejectButtonText: "🛑 Decline & Revise Draft",
+
+  // 4. Custom footer instructions:
+  customFooter: "Review copy and tap below to authorize instant dispatch.",
 });
 ```
 
-* **دعم اللغات المختلفة:** يمكن ضبط الأزرار بالعربية (`نشر الآن` / `رفض وإلغاء`) أو الإنجليزية (`Approve & Deploy` / `Decline`) أو أي نص مخصص.
-* **تأكيد القرار التفاعلي:** عند نقر الزر، يتم تحديث الرسالة فوراً بالنص المخصص مع عرض اسم المشرف الذي اتخذ القرار وتوقيته.
+* **Multi-Language Support:** Configure buttons in English (`Publish Now` / `Reject`), Arabic (`نشر فوري` / `رفض وإلغاء`), or custom enterprise formats.
+* **Dynamic Decision Receipts:** Upon button tap, the message in Telegram edits in-place to display the decision outcome and the reviewer's username.
 
 ## 3. 🔐 Zero-Trust Security & Key Encryption
 
@@ -222,24 +222,24 @@ When a post is scheduled by an AI agent or requires human validation before goin
 2. `TelegramBotService.sendApprovalRequest` sends a rich preview card to the administrator's phone:
 
 ```text
-🛡️ طلب اعتماد منشور جديد (Human Governance §14)
+🛡️ New Content Approval Request (Human Governance §14)
 
-📋 المنصة: TELEGRAM & LINKEDIN
-🏷️ العنوان: إعلان إطلاق المنتج الجديد
-⚡ الموعد: فوري عند الاعتماد
+📋 Platform: TELEGRAM & LINKEDIN
+🏷️ Title: Product Launch Announcement
+⚡ Schedule: Immediate upon approval
 
-📝 نص المنشور:
-> نعلن اليوم عن إطلاق الإصدار الثاني من سكريورا للأتمتة الذكية...
+📝 Post Content:
+> We are thrilled to unveil our v2.0 platform upgrade today...
 
-[ ✅ اعتماد ونشر فوري ]  [ ❌ رفض وإلغاء ]
+[ 🚀 Publish to All Channels ]  [ 🛑 Decline & Revise Draft ]
 ```
 
-3. When the user taps **[ ✅ اعتماد ونشر فوري ]**:
+3. When the user taps **[ 🚀 Publish to All Channels ]**:
    - The bot receives a `callback_query` (`approve:<token>`).
    - The token is verified and marked consumed (`usedAt = now()`).
    - The publication state transitions to `READY`.
    - The Outbox Dispatcher fires immediately, publishing across all channels.
-   - The Telegram message dynamically updates to display: `القرار المتخذ: ✅ تم الاعتماد والنشر بنجاح 🚀`.
+   - The Telegram message dynamically updates to display: `Decision Recorded: ✅ Approved and Published Successfully 🚀`.
 
 ---
 
