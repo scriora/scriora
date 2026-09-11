@@ -334,4 +334,111 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(pubCall.data.status).toBe('READY');
     expect(pubCall.data.scheduledAt).toBeNull();
   });
+
+  it('POST /v1/posts applies customBody override specifically to target destinations', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const userId = 'user-123';
+    const tgChannelAccId = '66666666-6666-4666-8666-666666666666';
+    const tgGroupAccId = '77777777-7777-4777-8777-777777777777';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId,
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Multi-Destination WS',
+        slug: 'multi-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: userId,
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.outboxCommand, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
+      { id: tgChannelAccId, workspaceId: wsId, platform: 'TELEGRAM', accountName: 'Main Channel' },
+      { id: tgGroupAccId, workspaceId: wsId, platform: 'TELEGRAM', accountName: 'Community Group' },
+    ] as any);
+
+    const mockTx = {
+      content: { create: vi.fn().mockResolvedValue({ id: 'content-multi-dest' }) },
+      contentVariant: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `variant-${args.data.socialAccountId}`, ...args.data })
+          ),
+      },
+      publication: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `pub-${args.data.socialAccountId}`, ...args.data })
+          ),
+      },
+      publishAttempt: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `att-${args.data.publicationId}`, ...args.data })
+          ),
+      },
+      outboxCommand: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: `outbox-${args.data.publicationId}`, ...args.data })
+          ),
+      },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const token = app.jwt.sign({ sub: userId });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'Universal default post text',
+        targets: [
+          {
+            socialAccountId: tgChannelAccId,
+            platform: 'TELEGRAM',
+            customBody: '📢 Formal announcement for Channel subscribers with bullet points!',
+          },
+          {
+            socialAccountId: tgGroupAccId,
+            platform: 'TELEGRAM',
+            customBody: '💬 Informal community prompt: What do you think about our new update?',
+          },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+
+    const variantCalls = mockTx.contentVariant.create.mock.calls;
+    expect(variantCalls[0][0].data.body).toBe('📢 Formal announcement for Channel subscribers with bullet points!');
+    expect(variantCalls[1][0].data.body).toBe('💬 Informal community prompt: What do you think about our new update?');
+
+    const outboxCalls = mockTx.outboxCommand.create.mock.calls;
+    expect(outboxCalls[0][0].data.payload.body).toBe('📢 Formal announcement for Channel subscribers with bullet points!');
+    expect(outboxCalls[1][0].data.payload.body).toBe('💬 Informal community prompt: What do you think about our new update?');
+  });
 });

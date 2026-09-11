@@ -120,13 +120,15 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       const publications = [];
 
       for (const target of targets) {
+        const targetBody = target.customBody?.trim() || body;
+
         // 2. Create ContentVariant
         const variant = await tx.contentVariant.create({
           data: {
             workspaceId,
             contentId: content.id,
             socialAccountId: target.socialAccountId,
-            body,
+            body: targetBody,
             metadata: JSON.parse(
               JSON.stringify({
                 ...(target.platformOptions || {}),
@@ -140,7 +142,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         const targetIdempotency = `${idempotencyKey}:${target.socialAccountId}`;
         const fingerprint = crypto
           .createHash('sha256')
-          .update(`${content.id}:${target.socialAccountId}:${body}`)
+          .update(`${content.id}:${target.socialAccountId}:${targetBody}`)
           .digest('hex');
 
         // 3. Create Publication
@@ -172,7 +174,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         // 5. Create OutboxCommand (Transactional Outbox Pattern)
         const payloadJson = JSON.parse(
           JSON.stringify({
-            body,
+            body: targetBody,
             platform: target.platform,
             socialAccountId: target.socialAccountId,
             mediaUrls: resolvedMediaUrls,

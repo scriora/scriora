@@ -89,6 +89,8 @@ export const PublishTargetSchema = z.object({
   /** Connected social account to publish to */
   socialAccountId: z.string().uuid('socialAccountId must be a valid UUID'),
   platform: SocialPlatformSchema,
+  /** Optional custom message body specific to this target destination (overrides universal body) */
+  customBody: z.string().min(1).max(10000).optional(),
   /** Platform-specific override options */
   platformOptions: PlatformOptionsSchema.optional(),
 });

@@ -179,30 +179,54 @@ public isAuthorized(senderId: string | number): boolean {
 
 ---
 
-## 4. 🎯 Multi-Destination Ingestion & Mapping
+## 4. 🎯 Multi-Destination Ingestion & Granular Target Selection
 
-Telegram separates targets into distinct chat types:
+Scriora's data architecture (`SocialAccount`, `ContentVariant`, and `Publication`) is natively built for **unlimited multi-destination scale**:
 
-| Target Type | External Account ID Format | Bot Permissions Needed | Example Record in DB |
-|---|---|---|---|
-| **Private Chat** | Positive integer (e.g. `987654321`) | None (User initiates `/start`) | `Ameer (@YourTelegramHandle)` |
-| **Public Channel** | Public username (e.g. `@my_channel`) | Admin (`can_post_messages`) | `Channel - @my_channel` |
-| **Private Channel** | Negative 13-digit integer (`-100...`) | Admin (`can_post_messages`) | `Channel - -1001234567890` |
-| **Supergroup / Forum** | Negative 13-digit integer (`-100...`) | Member / Admin (`can_send_messages`) | `Group - -1009876543210` |
+### 1. Connect Unlimited Channels, Supergroups, & Bots
+A single workspace can register **any number of Telegram destinations or bot instances**:
+* Channel 1: `@company_news` (Main Announcements)
+* Channel 2: `-1001234567890` (Private VIP Subscribers)
+* Supergroup 1: `-1009876543210` (Community Discussions)
+* Personal C2 Direct Chat: `987654321` (Executive Management)
+* **Multiple Bots:** Different departments (Marketing, Support, Operations) can connect separate bots or share a single bot token. Each destination generates an isolated `SocialAccount` record with its own AES-256-GCM encrypted envelope.
 
-### Connection Endpoint
-To attach any Telegram destination to a workspace, call:
+### 2. Multi-Account Support (Multiple LinkedIn Profiles & Telegram Bots)
+* **LinkedIn:** Connect personal profiles (e.g. CEO, Founder) alongside multiple Company Pages (e.g. Parent Corp, Subsidiary brands) in the same workspace.
+* **Database Guarantee:** Uniqueness is constrained by `@@unique([workspaceId, platform, externalAccountId])`, allowing unlimited distinct accounts per platform per tenant.
+
+### 3. Selective Publishing & Per-Destination Message Overrides (`customBody`)
+When publishing from the Scriora Web Dashboard or API, users select exactly which accounts receive the post, and can customize the copy per destination:
+
 ```http
-POST /v1/connect/telegram
+POST /v1/posts
 Content-Type: application/json
 x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 
 {
-  "botToken": "YOUR_BOT_TOKEN",
-  "chatId": "-1001234567890",
-  "channelTitle": "قناة تيليجرام الرسمية"
+  "body": "Universal default post content across all platforms.",
+  "targets": [
+    {
+      "socialAccountId": "66666666-6666-4666-8666-666666666666",
+      "platform": "TELEGRAM",
+      "customBody": "📢 <b>Official Channel Announcement:</b>\n• Key Takeaway 1\n• Key Takeaway 2\n👉 Read more: https://scriora.io"
+    },
+    {
+      "socialAccountId": "77777777-7777-4777-8777-777777777777",
+      "platform": "TELEGRAM",
+      "customBody": "💬 <b>Community Question:</b> What do you think of our new release? Drop your thoughts below!"
+    },
+    {
+      "socialAccountId": "33333333-3333-4333-8333-333333333333",
+      "platform": "LINKEDIN",
+      "customBody": "Today we are thrilled to announce a major milestone for our enterprise platform... #SaaS #Growth"
+    }
+  ]
 }
 ```
+
+* If `customBody` is provided, Scriora creates a dedicated `ContentVariant` tailored to that specific destination.
+* If omitted, it automatically falls back to the universal `body`.
 
 ---
 

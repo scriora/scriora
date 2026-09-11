@@ -101,3 +101,26 @@ x-workspace-id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
   "channelTitle": "Official Telegram Channel"
 }
 ```
+
+---
+
+## 🌐 Multi-Account, Multi-Bot & Custom Copy Overrides
+
+Scriora empowers teams with granular control over destinations and content variants:
+
+### 1. Unlimited Accounts & Channels per Workspace
+* Connect **any number** of Telegram channels, supergroups, forums, and bot instances.
+* Connect **multiple LinkedIn accounts**: personal profiles (Founder, Executives) alongside multiple Company Pages (Brand HQ, Regional branches).
+* Every account is stored as an independent `SocialAccount` record with its own AES-256-GCM encrypted envelope.
+
+### 2. Selective Destination Publishing
+* In the Web Dashboard, simply check or uncheck which channels or accounts will receive the post.
+* Programmatically, specify the target accounts in the `targets` array of `POST /v1/posts`.
+
+### 3. Tailor Copy Differently for Each Destination (`customBody`)
+* Avoid cookie-cutter posts: provide a specific message copy for each destination (`customBody`):
+  * **Telegram Channel:** Bullet points, emojis, call-to-action link.
+  * **Telegram Community Group:** Casual discussion prompt or poll.
+  * **LinkedIn Company Page:** Executive tone, hashtags, PDF slide deck.
+  * **LinkedIn Personal Profile:** Thought-leadership first-person perspective.
+* If a destination does not have a `customBody`, it seamlessly uses the universal post body.
