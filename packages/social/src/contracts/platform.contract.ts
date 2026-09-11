@@ -95,4 +95,5 @@ export interface PlatformAdapter {
   refreshAccessToken?(
     refreshToken: string
   ): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }>;
+  deletePost?(externalPostId: string, accessToken: string): Promise<boolean>;
 }

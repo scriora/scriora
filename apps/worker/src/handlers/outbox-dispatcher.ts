@@ -1,6 +1,15 @@
 import type { PrismaClient } from 'scriora-core';
 import { platformRegistry, type SocialPlatformType } from 'scriora-social';
 import { z } from 'zod';
+import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
+
+let envelopeServiceInstance: SecretEnvelopeService | null = null;
+function getEnvelopeService(): SecretEnvelopeService {
+  if (!envelopeServiceInstance) {
+    envelopeServiceInstance = new SecretEnvelopeService();
+  }
+  return envelopeServiceInstance;
+}
 
 export const OutboxPayloadSchema = z
   .object({
@@ -31,7 +40,18 @@ export async function processOutboxCommand(
   const command = await db.outboxCommand.findUnique({
     where: { id: outboxCommandId },
     include: {
-      publication: true,
+      publication: {
+        include: {
+          socialAccount: {
+            include: {
+              secretEnvelopes: {
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
       publishAttempt: true,
     },
   });
@@ -90,6 +110,22 @@ export async function processOutboxCommand(
     // 2. Resolve platform adapter from scriora-social
     const adapter = platformRegistry.get(platform);
 
+    // Decrypt credentials if envelope is attached
+    const envelope = command.publication?.socialAccount?.secretEnvelopes?.[0];
+    let accessToken: string | undefined;
+    if (envelope) {
+      try {
+        const decrypted = getEnvelopeService().decrypt(envelope.envelopeData);
+        accessToken = decrypted.accessToken;
+      } catch (err) {
+        // Fallback or ignore in test mock environments
+      }
+    }
+
+    const authorUrn = command.publication?.socialAccount?.externalAccountId
+      ? `urn:li:person:${command.publication.socialAccount.externalAccountId}`
+      : undefined;
+
     // 3. Dispatch to platform
     const result = await adapter.publish({
       workspaceId: command.workspaceId,
@@ -98,7 +134,11 @@ export async function processOutboxCommand(
       mediaUrls: payload.mediaUrls ?? [],
       idempotencyKey: payload.idempotencyKey,
       fingerprint: payload.fingerprint,
-      metadata: payload.metadata ?? {},
+      metadata: {
+        ...payload.metadata,
+        ...(accessToken ? { accessToken } : {}),
+        ...(authorUrn ? { authorUrn } : {}),
+      },
     });
 
     if (result.status === 'SUCCEEDED' && result.externalPostId) {

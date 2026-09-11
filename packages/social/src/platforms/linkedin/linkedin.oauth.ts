@@ -41,17 +41,13 @@ export class LinkedInOAuth {
       });
     }
 
-    const codeChallenge = crypto
-      .createHash('sha256')
-      .update(params.codeVerifier)
-      .digest('base64url');
     const scope = encodeURIComponent('openid profile email w_member_social');
 
     const authorizationUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${encodeURIComponent(
       clientId
     )}&redirect_uri=${encodeURIComponent(params.redirectUri)}&state=${encodeURIComponent(
       params.state
-    )}&scope=${scope}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
+    )}&scope=${scope}`;
 
     return { authorizationUrl };
   }
@@ -66,7 +62,6 @@ export class LinkedInOAuth {
           redirect_uri: params.redirectUri,
           client_id: this.effectiveClientId,
           client_secret: this.effectiveClientSecret,
-          code_verifier: params.codeVerifier,
         }).toString(),
         {
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

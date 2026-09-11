@@ -157,6 +157,8 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
             platform: target.platform,
             socialAccountId: target.socialAccountId,
             mediaUrls: media?.map((m) => m.mediaAssetId) || [],
+            idempotencyKey: targetIdempotency,
+            fingerprint,
             options: target.platformOptions || {},
           })
         );

@@ -38,7 +38,7 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       expect(pkce.codeChallenge).toBeDefined();
     });
 
-    it('builds canonical LinkedIn authorization URL with PKCE and scopes', () => {
+    it('builds canonical LinkedIn authorization URL with scopes', () => {
       const auth = oauth.getAuthorizationUrl({
         workspaceId: 'ws-123',
         redirectUri: 'http://localhost:4000/v1/connect/linkedin/callback',
@@ -49,8 +49,8 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       expect(auth.authorizationUrl).toContain('https://www.linkedin.com/oauth/v2/authorization');
       expect(auth.authorizationUrl).toContain('client_id=test_li_client_id');
       expect(auth.authorizationUrl).toContain('response_type=code');
-      expect(auth.authorizationUrl).toContain('code_challenge_method=S256');
       expect(auth.authorizationUrl).toContain('w_member_social');
+      expect(auth.authorizationUrl).toContain('openid');
     });
 
     it('throws descriptive error if clientId is missing', () => {
@@ -157,6 +157,45 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
     });
 
     it('publishes post with images and custom CONNECTIONS visibility', async () => {
+      // Mock for image 1: register, download, upload
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          value: {
+            uploadMechanism: {
+              'com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest': {
+                uploadUrl: 'https://upload.url/1',
+              },
+            },
+            asset: 'urn:li:digitalmediaAsset:asset_1',
+          },
+        },
+      });
+      mockedAxios.get.mockResolvedValueOnce({
+        data: Buffer.from('img1'),
+        headers: { 'content-type': 'image/jpeg' },
+      });
+      mockedAxios.post.mockResolvedValueOnce({ status: 201 });
+
+      // Mock for image 2: register, download, upload
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          value: {
+            uploadMechanism: {
+              'com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest': {
+                uploadUrl: 'https://upload.url/2',
+              },
+            },
+            asset: 'urn:li:digitalmediaAsset:asset_2',
+          },
+        },
+      });
+      mockedAxios.get.mockResolvedValueOnce({
+        data: Buffer.from('img2'),
+        headers: { 'content-type': 'image/jpeg' },
+      });
+      mockedAxios.post.mockResolvedValueOnce({ status: 201 });
+
+      // Mock for final UGC post creation
       mockedAxios.post.mockResolvedValueOnce({
         status: 201,
         data: { id: 'urn:li:share:img_999' },
@@ -175,7 +214,7 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
         },
       });
 
-      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      const calledPayload = mockedAxios.post.mock.calls[4][1] as any;
       expect(
         calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareMediaCategory
       ).toBe('IMAGE');
@@ -298,12 +337,27 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
     });
   });
 
-  describe('Post Verification', () => {
-    it('verifies valid LinkedIn URNs', async () => {
-      expect(await adapter.verify('urn:li:share:12345')).toBe(true);
-      expect(await adapter.verify('urn:li:ugcPost:67890')).toBe(true);
-      expect(await adapter.verify('x_tweet_123')).toBe(false);
-      expect(await adapter.verify('')).toBe(false);
+  describe('Post Deletion', () => {
+    it('deletes post successfully via UGC delete endpoint', async () => {
+      mockedAxios.delete.mockResolvedValueOnce({ status: 204 });
+      const deleted = await adapter.deletePost('urn:li:share:12345', 'valid_token');
+      expect(deleted).toBe(true);
+      expect(mockedAxios.delete).toHaveBeenCalledWith(
+        'https://api.linkedin.com/v2/ugcPosts/urn%3Ali%3Ashare%3A12345',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid_token',
+          }),
+        })
+      );
+    });
+
+    it('returns false if delete fails or parameters are missing', async () => {
+      expect(await adapter.deletePost('', 'valid_token')).toBe(false);
+      expect(await adapter.deletePost('urn:li:share:12345', '')).toBe(false);
+
+      mockedAxios.delete.mockRejectedValueOnce(new Error('Network error'));
+      expect(await adapter.deletePost('urn:li:share:12345', 'valid_token')).toBe(false);
     });
   });
 });

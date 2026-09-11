@@ -66,22 +66,48 @@ export class LinkedInAdapter implements PlatformAdapter {
     try {
       const visibilitySetting =
         (request.metadata?.visibility as string) === 'CONNECTIONS' ? 'CONNECTIONS' : 'PUBLIC';
-      const isDocument = Boolean(
-        request.metadata?.documentTitle || request.metadata?.postType === 'DOCUMENT'
-      );
-      const shareMediaCategory = isDocument
-        ? 'DOCUMENT'
-        : request.mediaUrls.length > 0
-          ? 'IMAGE'
-          : 'NONE';
+      const postType = (request.metadata?.postType as string) || '';
 
-      const mediaItems = request.mediaUrls.map((url) => ({
-        status: 'READY',
-        originalUrl: url,
-        ...(request.metadata?.documentTitle
-          ? { title: { text: String(request.metadata.documentTitle) } }
-          : {}),
-      }));
+      let shareMediaCategory: 'NONE' | 'ARTICLE' | 'IMAGE' | 'DOCUMENT' = 'NONE';
+      let mediaItems: unknown[] = [];
+
+      if (request.metadata?.documentTitle || postType === 'DOCUMENT') {
+        shareMediaCategory = 'DOCUMENT';
+        mediaItems = request.mediaUrls.map((url) => ({
+          status: 'READY',
+          originalUrl: url,
+          ...(request.metadata?.documentTitle
+            ? { title: { text: String(request.metadata.documentTitle) } }
+            : {}),
+        }));
+      } else if (postType === 'ARTICLE' || request.metadata?.articleUrl) {
+        shareMediaCategory = 'ARTICLE';
+        const articleUrl = (request.metadata?.articleUrl as string) || request.mediaUrls[0];
+        mediaItems = [
+          {
+            status: 'READY',
+            originalUrl: articleUrl,
+            ...(request.metadata?.title
+              ? { title: { text: String(request.metadata.title) } }
+              : {}),
+            ...(request.metadata?.description
+              ? { description: { text: String(request.metadata.description) } }
+              : {}),
+          },
+        ];
+      } else if (request.mediaUrls.length > 0) {
+        shareMediaCategory = 'IMAGE';
+        const uploadedAssets: Array<{ status: string; media: string; title?: { text: string } }> = [];
+        for (const url of request.mediaUrls) {
+          const assetUrn = await this.registerAndUploadImage(url, authorUrn, accessToken);
+          uploadedAssets.push({
+            status: 'READY',
+            media: assetUrn,
+            title: { text: request.text?.slice(0, 50) || 'Scriora Media' },
+          });
+        }
+        mediaItems = uploadedAssets;
+      }
 
       const payload = {
         author: authorUrn,
@@ -152,9 +178,90 @@ export class LinkedInAdapter implements PlatformAdapter {
     }
   }
 
+  private async registerAndUploadImage(
+    imageUrl: string,
+    authorUrn: string,
+    accessToken: string
+  ): Promise<string> {
+    const registerResponse = await axios.post(
+      'https://api.linkedin.com/v2/assets?action=registerUpload',
+      {
+        registerUploadRequest: {
+          recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
+          owner: authorUrn,
+          serviceRelationships: [
+            {
+              relationshipType: 'OWNER',
+              identifier: 'urn:li:userGeneratedContent',
+            },
+          ],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    const uploadUrl =
+      registerResponse.data?.value?.uploadMechanism?.[
+        'com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'
+      ]?.uploadUrl;
+    const assetUrn = registerResponse.data?.value?.asset as string;
+
+    if (!uploadUrl || !assetUrn) {
+      throw new PlatformError({
+        message: 'Failed to obtain LinkedIn image upload URL or asset URN',
+        code: 'MEDIA_UPLOAD_FAILED',
+        retryable: true,
+      });
+    }
+
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+      const contentType = (imgRes.headers['content-type'] as string) || 'image/png';
+      await axios.post(uploadUrl, imgRes.data, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': contentType,
+        },
+      });
+    } else if (imageUrl.startsWith('urn:li:digitalmediaAsset:')) {
+      return imageUrl;
+    } else {
+      throw new PlatformError({
+        message: `Unsupported image URL or format: ${imageUrl}`,
+        code: 'INVALID_MEDIA_URL',
+        retryable: false,
+      });
+    }
+
+    return assetUrn;
+  }
+
   public async verify(externalPostId: string): Promise<boolean> {
     if (!externalPostId) return false;
-    // Format check for LinkedIn URN
     return externalPostId.startsWith('urn:li:');
+  }
+
+  public async deletePost(externalPostId: string, accessToken: string): Promise<boolean> {
+    if (!externalPostId || !accessToken) return false;
+    try {
+      const response = await axios.delete(
+        `https://api.linkedin.com/v2/ugcPosts/${encodeURIComponent(externalPostId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'X-Restli-Protocol-Version': '2.0.0',
+          },
+        }
+      );
+      return response.status === 200 || response.status === 204;
+    } catch {
+      return false;
+    }
   }
 }
