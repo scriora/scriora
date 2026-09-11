@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { NormalizedSocialError } from '../../src/errors/social.error.js';
 
 describe('NormalizedSocialError Unit Tests', () => {
@@ -41,5 +41,28 @@ describe('NormalizedSocialError Unit Tests', () => {
     expect(customErr.retryable).toBe(true);
     expect(customErr.retryAfter).toBe(retryDate);
     expect(customErr.platformCode).toBe('ERR_PLATFORM_429');
+  });
+});
+
+describe('PlatformError Compatibility Tests', () => {
+  it('is an instance of NormalizedSocialError and Error', async () => {
+    const { PlatformError } = await import('../../src/errors/social.error.js');
+    const err = new PlatformError({
+      message: 'Rate limited',
+      code: 'RATE_LIMIT_EXCEEDED',
+      retryable: true,
+      platformCode: '429',
+      retryAfterMs: 5000,
+    });
+
+    expect(err).toBeInstanceOf(NormalizedSocialError);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe('PlatformError');
+    expect(err.code).toBe('RATE_LIMIT_EXCEEDED');
+    expect(err.category).toBe('EXTERNAL');
+    expect(err.retryable).toBe(true);
+    expect(err.platformCode).toBe('429');
+    expect(err.retryAfterMs).toBe(5000);
+    expect(err.retryAfter).toBeInstanceOf(Date);
   });
 });

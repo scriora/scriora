@@ -5,9 +5,3 @@ export * from './platforms/linkedin/linkedin.adapter.js';
 export * from './platforms/linkedin/linkedin.oauth.js';
 export * from './platforms/linkedin/mock.adapter.js';
 export * from './registry/platform.registry.js';
-
-import { MockLinkedInAdapter } from './platforms/linkedin/mock.adapter.js';
-// Auto-register default mock adapters for local/testing environments
-import { platformRegistry } from './registry/platform.registry.js';
-
-platformRegistry.register(new MockLinkedInAdapter());

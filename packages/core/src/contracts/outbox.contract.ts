@@ -1,4 +1,8 @@
+import { OutboxCommandStatus } from '@prisma/client';
 import { z } from 'zod';
+import { SocialPlatformSchema } from '../schemas/publish.schema.js';
+
+export const OutboxCommandStatusSchema = z.nativeEnum(OutboxCommandStatus);
 
 export const OutboxCommandPayloadSchema = z.object({
   publicationId: z.string().uuid(),
@@ -6,7 +10,7 @@ export const OutboxCommandPayloadSchema = z.object({
   workspaceId: z.string().uuid(),
   socialAccountId: z.string().uuid(),
   contentVariantId: z.string().uuid(),
-  platform: z.string(),
+  platform: SocialPlatformSchema,
   body: z.string().nullable(),
   scheduledAt: z.string().nullable(),
   fingerprint: z.string(),
@@ -20,7 +24,7 @@ export const OutboxCommandResponseSchema = z.object({
   publicationId: z.string().uuid(),
   publishAttemptId: z.string().uuid(),
   commandType: z.string(),
-  status: z.string(),
+  status: OutboxCommandStatusSchema,
   availableAt: z.date(),
   attempts: z.number(),
   createdAt: z.date(),

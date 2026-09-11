@@ -1,4 +1,7 @@
+import { PublicationStatus } from '@prisma/client';
 import { z } from 'zod';
+
+export const PublicationStatusSchema = z.nativeEnum(PublicationStatus);
 
 export const CreatePublicationSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -15,7 +18,7 @@ export const PublicationResponseSchema = z.object({
   workspaceId: z.string().uuid(),
   contentVariantId: z.string().uuid(),
   socialAccountId: z.string().uuid(),
-  status: z.string(),
+  status: PublicationStatusSchema,
   scheduledAt: z.date().nullable(),
   publishedAt: z.date().nullable(),
   externalPostId: z.string().nullable(),

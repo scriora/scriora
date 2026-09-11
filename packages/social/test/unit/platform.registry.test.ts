@@ -1,20 +1,30 @@
-﻿import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import '../../src/index.js';
 import { MockLinkedInAdapter } from '../../src/platforms/linkedin/mock.adapter.js';
 import { PlatformRegistry, platformRegistry } from '../../src/registry/platform.registry.js';
 
 describe('PlatformRegistry Unit Tests', () => {
-  it('has LinkedIn registered by default from index bootstrap', () => {
+  it('starts without auto-registered adapters from index bootstrap', () => {
+    platformRegistry.clear();
+    expect(platformRegistry.has('LINKEDIN')).toBe(false);
+  });
+
+  it('allows registering and getting a platform adapter', () => {
+    const adapter = new MockLinkedInAdapter();
+    platformRegistry.register(adapter);
     expect(platformRegistry.has('LINKEDIN')).toBe(true);
-    const adapter = platformRegistry.get('LINKEDIN');
-    expect(adapter.platform).toBe('LINKEDIN');
+    expect(platformRegistry.get('LINKEDIN')).toBe(adapter);
   });
 
   it('throws for unregistered platform', () => {
+    platformRegistry.clear();
     expect(() => platformRegistry.get('TIKTOK')).toThrow('PLATFORM_ADAPTER_NOT_REGISTERED: TIKTOK');
   });
 
   it('lists all supported platforms', () => {
+    platformRegistry.clear();
+    const adapter = new MockLinkedInAdapter();
+    platformRegistry.register(adapter);
     const platforms = platformRegistry.getSupportedPlatforms();
     expect(platforms).toContain('LINKEDIN');
   });

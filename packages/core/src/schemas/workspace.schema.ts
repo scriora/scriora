@@ -18,7 +18,8 @@ export const WorkspaceSlugSchema = z
 
 // ── Operating Mode ────────────────────────────────────────────────────────────
 
-export const OperatingModeSchema = z.enum(['CLASSIC', 'AGENTIC']);
+export const OperatingModeSchema = z.enum(['MANUAL', 'HYBRID', 'AUTONOMOUS']);
+export type OperatingModeType = z.infer<typeof OperatingModeSchema>;
 
 // ── Workspace Purpose ─────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ export const CreateWorkspaceSchema = z.object({
   name: z.string().min(2, 'Workspace name too short').max(100),
   slug: WorkspaceSlugSchema,
   purpose: WorkspacePurposeSchema.default('WORK'),
-  operatingMode: OperatingModeSchema.default('CLASSIC'),
+  operatingMode: OperatingModeSchema.default('MANUAL'),
   requiresApproval: z.boolean().default(false),
   description: z.string().max(500).optional(),
 });

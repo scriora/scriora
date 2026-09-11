@@ -1,4 +1,8 @@
+import { ContentStatus } from '@prisma/client';
 import { z } from 'zod';
+import { SocialPlatformSchema } from '../schemas/publish.schema.js';
+
+export const ContentStatusSchema = z.nativeEnum(ContentStatus);
 
 export const CreateContentSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -11,20 +15,7 @@ export type CreateContentDTO = z.infer<typeof CreateContentSchema>;
 export const CreateContentVariantSchema = z.object({
   workspaceId: z.string().uuid(),
   contentId: z.string().uuid(),
-  platform: z
-    .enum([
-      'LINKEDIN',
-      'X',
-      'INSTAGRAM',
-      'TIKTOK',
-      'YOUTUBE',
-      'THREADS',
-      'FACEBOOK',
-      'PINTEREST',
-      'BLUESKY',
-      'TELEGRAM',
-    ])
-    .optional(),
+  platform: SocialPlatformSchema.optional(),
   socialAccountId: z.string().uuid().optional(),
   body: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).default({}),
@@ -36,7 +27,7 @@ export const ContentResponseSchema = z.object({
   workspaceId: z.string().uuid(),
   title: z.string().nullable(),
   body: z.string().nullable(),
-  status: z.string(),
+  status: ContentStatusSchema,
   createdAt: z.date(),
   updatedAt: z.date(),
 });

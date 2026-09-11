@@ -42,7 +42,13 @@ export const PublishRequestSchema = z.object({
 export type PublishRequest = z.infer<typeof PublishRequestSchema>;
 
 export const PublishResultSchema = z.object({
-  status: z.enum(['SUCCEEDED', 'PLATFORM_PENDING', 'UNKNOWN_EXTERNAL_STATE', 'FAILED']),
+  status: z.enum([
+    'SUCCEEDED',
+    'PLATFORM_PENDING',
+    'UNKNOWN_EXTERNAL_STATE',
+    'FAILED_PERMANENT',
+    'FAILED',
+  ]),
   externalPostId: z.string().optional(),
   externalPostUrl: z.string().optional(),
   platformMetadata: z.record(z.string(), z.unknown()).default({}),

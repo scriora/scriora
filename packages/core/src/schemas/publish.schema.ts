@@ -1,4 +1,4 @@
-﻿/**
+/**
  * packages/core/src/schemas/publish.schema.ts
  * Canonical Zod schemas for the unified POST /v1/posts payload.
  * This is the most critical schema in Scriora — every publish request is validated here.
@@ -16,8 +16,9 @@ export const SocialPlatformSchema = z.enum([
   'YOUTUBE',
   'THREADS',
   'FACEBOOK',
-  'BLUESKY',
   'PINTEREST',
+  'BLUESKY',
+  'TELEGRAM',
 ]);
 
 // ── Media Reference ────────────────────────────────────────────────────────────
@@ -79,6 +80,7 @@ export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('FACEBOOK'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('BLUESKY'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('PINTEREST'), options: z.object({}).passthrough() }),
+  z.object({ platform: z.literal('TELEGRAM'), options: z.object({}).passthrough() }),
 ]);
 
 // ── Publish Target ─────────────────────────────────────────────────────────────
@@ -104,7 +106,7 @@ export const PublishPayloadSchema = z.object({
   targets: z
     .array(PublishTargetSchema)
     .min(1, 'At least one publish target is required')
-    .max(9, 'Cannot publish to more than 9 targets in a single request'),
+    .max(10, 'Cannot publish to more than 10 targets in a single request'),
 
   /** Optional media attachments */
   media: z.array(MediaRefSchema).max(10).optional(),

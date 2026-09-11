@@ -1,4 +1,4 @@
-﻿/**
+/**
  * packages/core/src/schemas/social-account.schema.ts
  * Canonical Zod schemas for Social Account management and OAuth flows.
  */
@@ -28,11 +28,10 @@ export const OAuthCallbackSchema = z.object({
 // ── Account Management ─────────────────────────────────────────────────────────
 
 export const SocialAccountStatusSchema = z.enum([
-  'ACTIVE',
-  'TOKEN_EXPIRED',
+  'PENDING_AUTH',
+  'CONNECTED',
+  'REFRESH_REQUIRED',
   'REVOKED',
-  'RATE_LIMITED',
-  'SUSPENDED',
 ]);
 
 // ── Approval Decision ──────────────────────────────────────────────────────────
