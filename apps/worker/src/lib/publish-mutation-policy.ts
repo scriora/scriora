@@ -1,5 +1,3 @@
-import { PlatformError } from 'scriora-social';
-
 /**
  * Inngest v4 applies `createFunction({ retries })` independently to every
  * `step.run`. There is no per-step maxAttempts. `retries: 0` is one attempt.
@@ -133,8 +131,8 @@ export type PlatformDispatchDeps<TRequest, TPublishResult> = {
 /**
  * Single-attempt platform mutation. Decrypts inside the call so the access
  * token is never returned (and therefore never persisted as Inngest step state).
- * Never throws after `adapter.publish` is invoked — unexpected errors become
- * UNKNOWN_EXTERNAL_STATE instead of a retriable step failure.
+ * Never throws after `adapter.publish` is invoked — PlatformError and unexpected
+ * errors become UNKNOWN_EXTERNAL_STATE instead of a sweepable retry.
  */
 export async function dispatchToPlatformOnce<
   TRequest,
@@ -175,20 +173,37 @@ export async function dispatchToPlatformOnce<
       };
     }
 
-    if (err instanceof PlatformError) {
-      return {
-        kind: 'failure',
-        code: err.code,
-        message: err.message,
-        retryable: err.retryable,
-        ...(err.retryAfterMs !== undefined ? { retryAfterMs: err.retryAfterMs } : {}),
-      };
-    }
-
+    // Adapter was already called. Any error — including typed PlatformError —
+    // is an uncertain external outcome. Do not return retryable failure that
+    // the sweep would pick up as PENDING and republish.
     return {
       kind: 'unknown_external_state',
       reason: err instanceof Error ? err.message : String(err),
       externalPostId: null,
     };
   }
+}
+
+export function isSweepableRetryableFailure(
+  result: PlatformDispatchStepResult
+): result is Extract<PlatformDispatchStepResult, { kind: 'failure' }> & { retryable: true } {
+  return result.kind === 'failure' && result.retryable === true;
+}
+
+/**
+ * Outbox column status the publish job persists for a dispatch step result.
+ * PENDING is sweepable and may re-invoke publish — only pre-invoke retryable
+ * failures may use it. Post-invoke unknown_external_state is recorded as
+ * FAILED (publication → UNKNOWN_EXTERNAL_STATE) via recordUnknownExternalState.
+ */
+export function persistableOutboxStatusForDispatchResult(
+  result: PlatformDispatchStepResult
+): 'PENDING' | 'FAILED' | null {
+  if (result.kind === 'unknown_external_state') {
+    return 'FAILED';
+  }
+  if (result.kind === 'failure') {
+    return isSweepableRetryableFailure(result) ? 'PENDING' : 'FAILED';
+  }
+  return null;
 }

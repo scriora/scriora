@@ -141,7 +141,7 @@ export async function createPublicationWithOutbox(
           workspaceId: dto.workspaceId,
           publicationId: publication.id,
           publishAttemptId: attempt.id,
-          commandType: 'DISPATCH_PUBLICATION',
+          commandType: 'SOCIAL_PUBLISH',
           payload: outboxPayload as unknown as object,
           status: 'PENDING',
           availableAt: dto.scheduledAt ?? new Date(),

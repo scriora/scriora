@@ -8,6 +8,8 @@ import {
   classifyAdapterSuccess,
   dispatchToPlatformOnce,
   hasExternalPostId,
+  isSweepableRetryableFailure,
+  persistableOutboxStatusForDispatchResult,
   shouldRetryPlatformMutation,
   shouldScheduleVerify,
   stepOutputContainsPlaintextSecret,
@@ -113,12 +115,13 @@ describe('publish mutation retry / unknown-id / secret policy', () => {
       externalPostId: null,
     });
     expect(shouldRetryPlatformMutation(1)).toBe(false);
+    expect(persistableOutboxStatusForDispatchResult(result)).not.toBe('PENDING');
   });
 
-  it('returns typed PlatformError without throwing so Inngest will not replay the mutation', async () => {
+  it('does not leave sweepable PENDING after PlatformError once publish was invoked', async () => {
     const publish = vi.fn().mockRejectedValue(
       new PlatformError({
-        message: 'rate limited',
+        message: 'rate limited after accept',
         code: 'RATE_LIMITED',
         retryable: true,
         retryAfterMs: 1000,
@@ -132,13 +135,15 @@ describe('publish mutation retry / unknown-id / secret policy', () => {
       buildPublishRequest: (accessToken) => ({ metadata: { accessToken } }),
     });
 
+    expect(publish).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
-      kind: 'failure',
-      code: 'RATE_LIMITED',
-      message: 'rate limited',
-      retryable: true,
-      retryAfterMs: 1000,
+      kind: 'unknown_external_state',
+      reason: 'rate limited after accept',
+      externalPostId: null,
     });
+    expect(isSweepableRetryableFailure(result)).toBe(false);
+    expect(persistableOutboxStatusForDispatchResult(result)).toBe('FAILED');
+    expect(persistableOutboxStatusForDispatchResult(result)).not.toBe('PENDING');
     expect(stepOutputContainsPlaintextSecret(result)).toBe(false);
   });
 
@@ -172,6 +177,26 @@ describe('publish mutation retry / unknown-id / secret policy', () => {
       message: 'bad envelope',
       retryable: false,
     });
+    expect(persistableOutboxStatusForDispatchResult(decryptFailure)).toBe('FAILED');
+    expect(isSweepableRetryableFailure(decryptFailure)).toBe(false);
+  });
+
+  it('allows sweepable PENDING only for pre-invoke retryable failure results', () => {
+    expect(
+      persistableOutboxStatusForDispatchResult({
+        kind: 'failure',
+        code: 'TRANSIENT',
+        message: 'decrypt later',
+        retryable: true,
+      })
+    ).toBe('PENDING');
+    expect(
+      persistableOutboxStatusForDispatchResult({
+        kind: 'unknown_external_state',
+        reason: 'after invoke',
+        externalPostId: null,
+      })
+    ).not.toBe('PENDING');
   });
 
   it('detects plaintext secret keys in step-shaped objects', () => {

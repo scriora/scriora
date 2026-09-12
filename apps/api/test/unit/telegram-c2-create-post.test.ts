@@ -232,7 +232,7 @@ describe('handleTelegramC2ApprovalDecision', () => {
       approvalToken: { update: vi.fn().mockResolvedValue({}) },
       approval: { update: vi.fn().mockResolvedValue({}) },
       publication: {
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({
           id: publicationId,
           workspaceId,
@@ -283,8 +283,8 @@ describe('handleTelegramC2ApprovalDecision', () => {
         sendPublicationRequested: send,
       })
     ).resolves.toBe(true);
-    expect(mockTx.publication.update).toHaveBeenCalledWith({
-      where: { id: publicationId },
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith({
+      where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
       data: { status: 'READY' },
     });
     expect(mockTx.outboxCommand.create).toHaveBeenCalledWith(
@@ -312,5 +312,56 @@ describe('handleTelegramC2ApprovalDecision', () => {
       handleTelegramC2ApprovalDecision(db as any, 'missing', 'APPROVED')
     ).resolves.toBe(false);
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not clobber PUBLISHED or enqueue outbox when CAS misses (N4)', async () => {
+    const publicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const mockTx = {
+      approvalToken: { update: vi.fn().mockResolvedValue({}) },
+      approval: { update: vi.fn().mockResolvedValue({}) },
+      publication: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue({ status: 'PUBLISHED' }),
+      },
+      outboxCommand: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+    };
+
+    const db = {
+      approvalToken: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'token-row-1',
+          tokenHash: 'hash',
+          usedAt: null,
+          expiresAt: new Date(Date.now() + 60_000),
+          approval: {
+            id: 'approval-1',
+            resourceType: 'PUBLICATION',
+            resourceId: publicationId,
+            status: 'PENDING',
+          },
+        }),
+      },
+      $transaction: vi.fn().mockImplementation(async (cb: (tx: typeof mockTx) => unknown) =>
+        cb(mockTx)
+      ),
+    };
+
+    const send = vi.fn().mockResolvedValue({ ids: ['evt-1'] });
+
+    await expect(
+      handleTelegramC2ApprovalDecision(db as any, 'raw-token', 'APPROVED', {
+        sendPublicationRequested: send,
+      })
+    ).resolves.toBe(true);
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith({
+      where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
+      data: { status: 'READY' },
+    });
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 });

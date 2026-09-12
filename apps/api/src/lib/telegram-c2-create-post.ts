@@ -15,9 +15,9 @@ import {
   type PublishTarget,
 } from 'scriora-core';
 import { maybeSendTelegramApprovalRequests } from './approval-delivery.js';
+import { applyApprovalDecisionToPublication } from './approval-publication-decision.js';
 import type { PublicationRequestedSender } from './publication-requested.js';
 import { maybeDispatchPublicationRequested } from './publication-requested.js';
-import { enqueueApprovedPublicationOutbox } from './social-publish-outbox.js';
 
 export interface TelegramC2Workspace {
   id: string;
@@ -149,10 +149,10 @@ export interface TelegramC2ApprovalDecisionDeps {
 }
 
 /**
- * Apply a Telegram inline-button decision using the same outbox gate as
- * POST /v1/approve/:token/decision: APPROVED creates a sweepable SOCIAL_PUBLISH
- * outbox and immediately emits scriora/publication.requested when available;
- * REJECTED cancels and deletes any PENDING outbox.
+ * Apply a Telegram inline-button decision using the same CAS + outbox gate as
+ * POST /v1/approve/:token/decision: only REQUIRES_APPROVAL transitions to
+ * READY/CANCELLED. APPROVED then creates a sweepable SOCIAL_PUBLISH outbox
+ * and emits scriora/publication.requested when available.
  */
 export async function handleTelegramC2ApprovalDecision(
   db: PrismaClient,
@@ -171,7 +171,7 @@ export async function handleTelegramC2ApprovalDecision(
     return false;
   }
 
-  const queued = await db.$transaction(async (tx) => {
+  const outcome = await db.$transaction(async (tx) => {
     await tx.approvalToken.update({
       where: { id: tokenRecord.id },
       data: { usedAt: new Date() },
@@ -187,27 +187,19 @@ export async function handleTelegramC2ApprovalDecision(
     });
 
     if (tokenRecord.approval.resourceType !== 'PUBLICATION') {
-      return { outboxCommandId: null, availableAt: null, status: null, created: false };
+      return {
+        applied: true,
+        publicationStatus: null,
+        queued: { outboxCommandId: null, availableAt: null, status: null, created: false },
+      };
     }
 
-    const publicationId = tokenRecord.approval.resourceId;
-    await tx.publication.update({
-      where: { id: publicationId },
-      data: { status: decision === 'APPROVED' ? 'READY' : 'CANCELLED' },
-    });
-
-    if (decision === 'APPROVED') {
-      return enqueueApprovedPublicationOutbox(tx, publicationId);
-    }
-    await tx.outboxCommand.deleteMany({
-      where: { publicationId, status: 'PENDING' },
-    });
-    return { outboxCommandId: null, availableAt: null, status: null, created: false };
+    return applyApprovalDecisionToPublication(tx, tokenRecord.approval.resourceId, decision);
   });
 
-  if (decision === 'APPROVED') {
+  if (decision === 'APPROVED' && outcome.applied) {
     const dispatch = deps.dispatchPublicationRequested ?? maybeDispatchPublicationRequested;
-    await dispatch(queued, {
+    await dispatch(outcome.queued, {
       ...(deps.sendPublicationRequested ? { send: deps.sendPublicationRequested } : {}),
     });
   }

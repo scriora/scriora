@@ -58,7 +58,7 @@ describe('API Routes — Approvals', () => {
       approvalToken: { update: vi.fn().mockResolvedValue({}) },
       approval: { update: vi.fn().mockResolvedValue({}) },
       publication: {
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({
           id: publicationId,
           workspaceId: 'ws-1',
@@ -104,9 +104,9 @@ describe('API Routes — Approvals', () => {
     const json = JSON.parse(res.body);
     expect(json.success).toBe(true);
     expect(json.data.decision).toBe('APPROVED');
-    expect(mockTx.publication.update).toHaveBeenCalledWith(
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: publicationId },
+        where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
         data: { status: 'READY' },
       })
     );
@@ -156,7 +156,7 @@ describe('API Routes — Approvals', () => {
       approvalToken: { update: vi.fn().mockResolvedValue({}) },
       approval: { update: vi.fn().mockResolvedValue({}) },
       publication: {
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({
           id: publicationId,
           workspaceId: 'ws-1',
@@ -229,7 +229,7 @@ describe('API Routes — Approvals', () => {
       approvalToken: { update: vi.fn().mockResolvedValue({}) },
       approval: { update: vi.fn().mockResolvedValue({}) },
       publication: {
-        update: vi.fn().mockResolvedValue({}),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn(),
       },
       outboxCommand: {
@@ -249,9 +249,9 @@ describe('API Routes — Approvals', () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.decision).toBe('REJECTED');
-    expect(mockTx.publication.update).toHaveBeenCalledWith(
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: publicationId },
+        where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
         data: { status: 'CANCELLED' },
       })
     );
@@ -259,5 +259,106 @@ describe('API Routes — Approvals', () => {
       where: { publicationId, status: 'PENDING' },
     });
     expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+  });
+
+  it('POST /v1/approve/:token/decision APPROVED does not clobber PUBLISHED (N4 CAS)', async () => {
+    const publicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    vi.spyOn(prisma.approvalToken, 'findFirst').mockResolvedValue({
+      id: 'token-row-published',
+      tokenHash: 'hash',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      approval: {
+        id: 'approval-published',
+        resourceType: 'PUBLICATION',
+        resourceId: publicationId,
+        status: 'PENDING',
+      },
+    } as any);
+
+    const mockTx = {
+      approvalToken: { update: vi.fn().mockResolvedValue({}) },
+      approval: { update: vi.fn().mockResolvedValue({}) },
+      publication: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue({ status: 'PUBLISHED' }),
+      },
+      outboxCommand: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+    const dispatch = vi
+      .spyOn(publicationRequested, 'maybeDispatchPublicationRequested')
+      .mockResolvedValue({ dispatched: true, reason: 'sent' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/approve/published-token/decision',
+      payload: { decision: 'APPROVED' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('PUBLICATION_STATUS_CONFLICT');
+    expect(json.error.message).toContain('PUBLISHED');
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith({
+      where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
+      data: { status: 'READY' },
+    });
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('POST /v1/approve/:token/decision REJECTED does not clobber PUBLISHED (N4 CAS)', async () => {
+    const publicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    vi.spyOn(prisma.approvalToken, 'findFirst').mockResolvedValue({
+      id: 'token-row-pub-rej',
+      tokenHash: 'hash',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      approval: {
+        id: 'approval-pub-rej',
+        resourceType: 'PUBLICATION',
+        resourceId: publicationId,
+        status: 'PENDING',
+      },
+    } as any);
+
+    const mockTx = {
+      approvalToken: { update: vi.fn().mockResolvedValue({}) },
+      approval: { update: vi.fn().mockResolvedValue({}) },
+      publication: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        findUnique: vi.fn().mockResolvedValue({ status: 'PUBLISHED' }),
+      },
+      outboxCommand: {
+        findFirst: vi.fn(),
+        create: vi.fn(),
+        deleteMany: vi.fn(),
+      },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/approve/published-reject-token/decision',
+      payload: { decision: 'REJECTED' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error.code).toBe('PUBLICATION_STATUS_CONFLICT');
+    expect(mockTx.publication.updateMany).toHaveBeenCalledWith({
+      where: { id: publicationId, status: 'REQUIRES_APPROVAL' },
+      data: { status: 'CANCELLED' },
+    });
+    expect(mockTx.outboxCommand.deleteMany).not.toHaveBeenCalled();
   });
 });

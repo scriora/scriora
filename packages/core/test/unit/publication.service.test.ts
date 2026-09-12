@@ -19,6 +19,7 @@ describe('Publication Service Unit Tests', () => {
   });
 
   it('atomically creates Publication, PublishAttempt, and OutboxCommand in one transaction', async () => {
+    let createdTx: { outboxCommand: { create: ReturnType<typeof vi.fn> } };
     const mockDb = {
       workspace: {
         findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: false }),
@@ -67,6 +68,7 @@ describe('Publication Service Unit Tests', () => {
             }),
           },
         };
+        createdTx = tx;
         return await callback(tx);
       }),
     };
@@ -82,6 +84,11 @@ describe('Publication Service Unit Tests', () => {
     expect(result.outboxCommandId).toBe('outbox-1');
     expect(result.requiresApproval).toBe(false);
     expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
+    expect(createdTx.outboxCommand.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ commandType: 'SOCIAL_PUBLISH' }),
+      })
+    );
   });
 
   it('rejects if ContentVariant does not belong to the workspace', async () => {

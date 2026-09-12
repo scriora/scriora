@@ -10,6 +10,7 @@ import {
 import { abortPublishIfBlocked } from '../lib/publication-dispatch-guard.js';
 import {
   dispatchToPlatformOnce,
+  isSweepableRetryableFailure,
   PUBLISH_JOB_OPTIONS,
   shouldScheduleVerify,
   stepOutputContainsPlaintextSecret,
@@ -288,7 +289,9 @@ export const publishJob = inngest.createFunction(
     }
 
     const errorData = publishResult;
-    const isRetryable = errorData.retryable;
+    // PENDING / sweep retry only for pre-invoke retryable failures.
+    // Post-invoke errors are classified as unknown_external_state above.
+    const isRetryable = isSweepableRetryableFailure(errorData);
 
     await step.run('record-failure', async () => {
       await prisma.$transaction([
