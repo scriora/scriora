@@ -253,6 +253,60 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(json.error.code).toBe('MISSING_BOT_TOKEN');
   });
 
+  it('GET /v1/connect/discord/channels rejects a bot token supplied in the query string', async () => {
+    mockWorkspaceMember();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/discord/channels?workspaceId=${validWsId}&botToken=query-secret`,
+      headers: authHeaders(),
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe('MISSING_BOT_TOKEN');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('GET /v1/connect/discord/channels accepts the bot token header', async () => {
+    mockWorkspaceMember();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: 'guild-1', name: 'Guild One', icon: null }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: 'channel-1', name: 'general', type: 0 }]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/discord/channels?workspaceId=${validWsId}`,
+      headers: { ...authHeaders(), 'x-discord-bot-token': 'header-secret' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.channels).toEqual([
+      expect.objectContaining({ id: 'channel-1', guildId: 'guild-1' }),
+    ]);
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      'https://discord.com/api/v10/users/@me/guilds',
+      { headers: { Authorization: 'Bot header-secret' } }
+    );
+  });
+
   it('GET /v1/connect/discord/channels does not decrypt envelopes for non-members', async () => {
     const accountId = '33333333-3333-4333-8333-333333333333';
     vi.spyOn(prisma.socialAccount, 'findUnique').mockResolvedValue({
