@@ -76,6 +76,60 @@ describe('API Routes — Auth', () => {
     expect(body.error.code).toBe('MISSING_TOKEN');
   });
 
+  it('GET /v1/auth/verify consumes a valid link and creates a session', async () => {
+    vi.spyOn(prisma.user, 'findFirst').mockResolvedValue({
+      id: 'u-123',
+      email: 'test@scriora.io',
+      name: 'Test User',
+      emailVerifiedAt: null,
+    } as never);
+    const claimLink = vi.spyOn(prisma.user, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    const createSession = vi
+      .spyOn(prisma.refreshSession, 'create')
+      .mockResolvedValue({ id: 'sess-1' } as never);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/auth/verify?token=one-time-link',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.accessToken).toBeDefined();
+    expect(claimLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'u-123', magicLinkTokenHash: expect.any(String) }),
+      })
+    );
+    expect(createSession).toHaveBeenCalledOnce();
+    expect(res.headers['set-cookie']).toContain('refreshToken=');
+  });
+
+  it('GET /v1/auth/verify rejects the request when another verifier consumes the link first', async () => {
+    vi.spyOn(prisma.user, 'findFirst').mockResolvedValue({
+      id: 'u-123',
+      email: 'test@scriora.io',
+      name: 'Test User',
+      emailVerifiedAt: null,
+    } as never);
+    const legacyUpdate = vi.spyOn(prisma.user, 'update').mockResolvedValue({ id: 'u-123' } as never);
+    const claimLink = vi.spyOn(prisma.user, 'updateMany').mockResolvedValue({ count: 0 } as never);
+    const createSession = vi
+      .spyOn(prisma.refreshSession, 'create')
+      .mockResolvedValue({ id: 'sess-1' } as never);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/auth/verify?token=one-time-link',
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error.code).toBe('INVALID_OR_EXPIRED_TOKEN');
+    expect(claimLink).toHaveBeenCalledOnce();
+    expect(legacyUpdate).not.toHaveBeenCalled();
+    expect(createSession).not.toHaveBeenCalled();
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
+
   it('DELETE /v1/auth/logout revokes the refresh session and returns 200', async () => {
     const refreshToken = app.jwt.sign({ sub: 'u-123', type: 'refresh' }, { expiresIn: '30d' });
     const revokeSpy = vi.spyOn(prisma.refreshSession, 'updateMany').mockResolvedValue({ count: 1 } as never);
