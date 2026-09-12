@@ -11,6 +11,15 @@ import {
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
+import {
+  maybeSendTelegramApprovalRequests,
+  type TelegramApprovalDeliveryRequest,
+} from '../../../lib/approval-delivery.js';
+import {
+  APPROVAL_TOKEN_TTL_MS,
+  buildApprovalMagicLink,
+  generateApprovalToken,
+} from '../../../lib/approval-token.js';
 import { err, ok } from '../../../lib/response.js';
 import { buildSocialPublishOutboxPayload } from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
@@ -134,10 +143,11 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     // Atomic creation of Content -> Variants -> Publications -> Attempts -> Outbox
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create master Content record
+      const contentTitle = body.slice(0, 80);
       const content = await tx.content.create({
         data: {
           workspaceId,
-          title: body.slice(0, 80),
+          title: contentTitle,
           body,
           status: 'READY',
           createdByUserId: userId,
@@ -145,6 +155,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       const publications = [];
+      const pendingTelegramApprovals: TelegramApprovalDeliveryRequest[] = [];
 
       for (const target of targets) {
         const targetBody = target.customBody?.trim() || body;
@@ -231,7 +242,11 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           outboxCommandId = outboxCmd.id;
         }
 
-        // 6. If approval required, create Approval & ApprovalToken (§14)
+        // 6. If approval required, create Approval & ApprovalToken (§14).
+        // Persist SHA-256 only; keep rawToken in memory for one-time delivery.
+        let approvalToken: string | undefined;
+        let approvalUrl: string | undefined;
+        let approvalId: string | undefined;
         if (requiresApproval) {
           const approval = await tx.approval.create({
             data: {
@@ -243,8 +258,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
             },
           });
 
-          const rawToken = crypto.randomBytes(32).toString('hex');
-          const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+          const { rawToken, tokenHash } = generateApprovalToken();
           const nonce = crypto.randomBytes(16).toString('hex');
           await tx.approvalToken.create({
             data: {
@@ -252,8 +266,20 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
               approvalId: approval.id,
               tokenHash,
               nonce,
-              expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000), // 72 hours
+              expiresAt: new Date(Date.now() + APPROVAL_TOKEN_TTL_MS),
             },
+          });
+
+          approvalId = approval.id;
+          approvalToken = rawToken;
+          approvalUrl = buildApprovalMagicLink(rawToken);
+          pendingTelegramApprovals.push({
+            approvalId: approval.id,
+            token: rawToken,
+            title: contentTitle,
+            body: targetBody,
+            platform: target.platform,
+            scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
           });
         }
 
@@ -262,14 +288,29 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           platform: target.platform,
           status: publication.status,
           outboxCommandId,
+          ...(approvalId && approvalToken && approvalUrl
+            ? { approvalId, approvalToken, approvalUrl }
+            : {}),
         });
       }
 
       return {
         contentId: content.id,
         publications,
+        pendingTelegramApprovals,
       };
     });
+
+    if (result.pendingTelegramApprovals.length > 0) {
+      try {
+        await maybeSendTelegramApprovalRequests(result.pendingTelegramApprovals);
+      } catch (deliveryError: unknown) {
+        request.log.warn(
+          { err: deliveryError },
+          'Telegram approval delivery failed; raw token still in API response'
+        );
+      }
+    }
 
     return reply.status(202).send(
       ok(

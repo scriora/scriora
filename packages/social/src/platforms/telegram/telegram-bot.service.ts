@@ -9,6 +9,32 @@
 import axios from 'axios';
 import { PlatformError } from '../../errors/social.error.js';
 
+/** Telegram Bot API limit for `callback_data` (UTF-8 bytes). */
+export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
+
+export function buildTelegramApprovalCallbackData(token: string): {
+  approve: string;
+  reject: string;
+} {
+  const approve = `approve:${token}`;
+  const reject = `reject:${token}`;
+  assertTelegramCallbackDataLength(approve);
+  assertTelegramCallbackDataLength(reject);
+  return { approve, reject };
+}
+
+export function assertTelegramCallbackDataLength(data: string): void {
+  const bytes = Buffer.byteLength(data, 'utf8');
+  if (bytes > TELEGRAM_CALLBACK_DATA_MAX_BYTES) {
+    throw new PlatformError({
+      message: `Telegram callback_data exceeds ${TELEGRAM_CALLBACK_DATA_MAX_BYTES} bytes (got ${bytes})`,
+      code: 'CALLBACK_DATA_TOO_LONG',
+      category: 'VALIDATION',
+      retryable: false,
+    });
+  }
+}
+
 export interface TelegramBotConfig {
   botToken: string;
   adminChatId?: string | number | undefined;
@@ -275,13 +301,14 @@ export class TelegramBotService {
 
     const approveText = params.approveButtonText ?? '✅ اعتماد ونشر فوري';
     const rejectText = params.rejectButtonText ?? '❌ رفض وإلغاء';
+    const callbackData = buildTelegramApprovalCallbackData(params.token);
 
     return this.sendMessage(params.chatId, message, {
       replyMarkup: {
         inline_keyboard: [
           [
-            { text: approveText, callback_data: `approve:${params.token}` },
-            { text: rejectText, callback_data: `reject:${params.token}` },
+            { text: approveText, callback_data: callbackData.approve },
+            { text: rejectText, callback_data: callbackData.reject },
           ],
         ],
       },

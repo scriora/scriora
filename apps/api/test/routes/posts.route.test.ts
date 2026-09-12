@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
+import * as approvalDelivery from '../../src/lib/approval-delivery.js';
+import {
+  APPROVAL_RAW_TOKEN_HEX_LENGTH,
+  hashApprovalToken,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+} from '../../src/lib/approval-token.js';
 
 interface TxDataArgs {
   data: Record<string, unknown>;
@@ -751,6 +757,24 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.data.publications[0].status).toBe('REQUIRES_APPROVAL');
     expect(json.data.publications[0].outboxCommandId).toBeNull();
 
+    const deliveredToken = json.data.publications[0].approvalToken as string;
+    expect(deliveredToken).toMatch(new RegExp(`^[0-9a-f]{${APPROVAL_RAW_TOKEN_HEX_LENGTH}}$`));
+    expect(json.data.publications[0].approvalUrl).toContain(`/v1/approve/${deliveredToken}`);
+    expect(json.data.publications[0].approvalId).toBe('approval-1');
+    expect(Buffer.byteLength(`approve:${deliveredToken}`, 'utf8')).toBeLessThanOrEqual(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+    expect(Buffer.byteLength(`reject:${deliveredToken}`, 'utf8')).toBeLessThanOrEqual(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+
+    const persisted = mockTx.approvalToken.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(persisted.tokenHash).toBe(hashApprovalToken(deliveredToken));
+    expect(persisted.tokenHash).not.toBe(deliveredToken);
+    expect(persisted).not.toHaveProperty('token');
+    expect(persisted).not.toHaveProperty('rawToken');
+    expect(JSON.stringify(persisted)).not.toContain(deliveredToken);
+
     expect(mockTx.publication.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'REQUIRES_APPROVAL' }),
@@ -759,6 +783,94 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
     expect(mockTx.approval.create).toHaveBeenCalledTimes(1);
     expect(mockTx.approvalToken.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /v1/posts with requiresApproval=true delivers the raw token to Telegram when credentials exist', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const userId = 'user-123';
+    const linkedinAccId = '33333333-3333-4333-8333-333333333333';
+
+    const telegramSpy = vi
+      .spyOn(approvalDelivery, 'maybeSendTelegramApprovalRequests')
+      .mockResolvedValue({ attempted: true, delivered: 1 });
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId,
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Approval WS',
+        slug: 'approval-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: userId,
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: true,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
+      { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
+    ] as any);
+
+    const mockTx = {
+      content: { create: vi.fn().mockResolvedValue({ id: 'content-tg' }) },
+      contentVariant: { create: vi.fn().mockResolvedValue({ id: 'variant-tg' }) },
+      publication: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: 'pub-tg', ...args.data })
+          ),
+      },
+      publishAttempt: { create: vi.fn().mockResolvedValue({ id: 'att-tg' }) },
+      outboxCommand: { create: vi.fn() },
+      approval: { create: vi.fn().mockResolvedValue({ id: 'approval-tg' }) },
+      approvalToken: { create: vi.fn().mockResolvedValue({ id: 'token-tg' }) },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const token = app.jwt.sign({ sub: userId });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'Needs human approval before publish',
+        targets: [{ socialAccountId: linkedinAccId, platform: 'LINKEDIN' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const json = JSON.parse(res.body);
+    const deliveredToken = json.data.publications[0].approvalToken as string;
+
+    expect(telegramSpy).toHaveBeenCalledTimes(1);
+    expect(telegramSpy).toHaveBeenCalledWith([
+      expect.objectContaining({
+        approvalId: 'approval-tg',
+        token: deliveredToken,
+        platform: 'LINKEDIN',
+        title: 'Needs human approval before publish',
+        body: 'Needs human approval before publish',
+      }),
+    ]);
+
+    const persisted = mockTx.approvalToken.create.mock.calls[0][0].data as Record<string, unknown>;
+    expect(persisted.tokenHash).toBe(hashApprovalToken(deliveredToken));
+    expect(JSON.stringify(persisted)).not.toContain(deliveredToken);
   });
 
   it('POST /v1/posts scheduled + requiresApproval does not create an outbox even when availableAt would be now-eligible later', async () => {

@@ -1,6 +1,10 @@
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TelegramBotService } from '../../src/platforms/telegram/telegram-bot.service.js';
+import {
+  buildTelegramApprovalCallbackData,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+  TelegramBotService,
+} from '../../src/platforms/telegram/telegram-bot.service.js';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
@@ -186,6 +190,24 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
         text: expect.stringContaining('تم الاعتماد'),
       })
     );
+  });
+
+  it('keeps approve/reject callback_data within Telegram 64-byte limit for 32-hex tokens', () => {
+    const token = 'a'.repeat(32);
+    const { approve, reject } = buildTelegramApprovalCallbackData(token);
+
+    expect(Buffer.byteLength(approve, 'utf8')).toBeLessThanOrEqual(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+    expect(Buffer.byteLength(reject, 'utf8')).toBeLessThanOrEqual(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
+    expect(approve).toBe(`approve:${token}`);
+    expect(reject).toBe(`reject:${token}`);
+  });
+
+  it('rejects a 64-hex token that would overflow Telegram callback_data', () => {
+    const legacyToken = 'ab'.repeat(32);
+    expect(legacyToken).toHaveLength(64);
+    expect(() => buildTelegramApprovalCallbackData(legacyToken)).toThrow(/callback_data exceeds/);
   });
 
   it('formats and sends approval request with inline action buttons', async () => {
