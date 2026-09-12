@@ -224,6 +224,9 @@ export class LinkedInAdapter implements PlatformAdapter {
         },
       };
     } catch (err: unknown) {
+      if (err instanceof PlatformError) {
+        throw err;
+      }
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const retryable = status === 429 || (status !== undefined && status >= 500 && status < 600);
