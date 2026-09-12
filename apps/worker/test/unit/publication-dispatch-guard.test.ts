@@ -5,6 +5,7 @@ import {
   buildOutboxSweepWhere,
   findActionableOutboxCommands,
   isPublicationDispatchBlocked,
+  STALE_PROCESSING_MS,
 } from '../../src/lib/publication-dispatch-guard.js';
 
 describe('publication dispatch guard (§14 approval gate)', () => {
@@ -38,6 +39,10 @@ describe('publication dispatch guard (§14 approval gate)', () => {
         expect.objectContaining({
           status: 'PENDING',
           availableAt: { lte: now },
+        }),
+        expect.objectContaining({
+          status: 'PROCESSING',
+          updatedAt: { lt: new Date(now.getTime() - STALE_PROCESSING_MS) },
         }),
       ])
     );

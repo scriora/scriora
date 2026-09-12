@@ -4,6 +4,9 @@
  */
 export const BLOCKED_DISPATCH_PUBLICATION_STATUSES = ['REQUIRES_APPROVAL', 'CANCELLED'] as const;
 
+/** PROCESSING outbox rows older than this are eligible for sweep reclaim / CAS claim. */
+export const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
 export type BlockedDispatchPublicationStatus =
   (typeof BLOCKED_DISPATCH_PUBLICATION_STATUSES)[number];
 
@@ -26,7 +29,7 @@ export function abortPublishIfBlocked(
 }
 
 export function buildOutboxSweepWhere(now: Date) {
-  const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000);
+  const tenMinutesAgo = new Date(now.getTime() - STALE_PROCESSING_MS);
 
   return {
     attempts: { lt: 5 },

@@ -1,6 +1,11 @@
 import { prisma } from 'scriora-core';
 import { PlatformError, platformRegistry, type SocialPlatformType } from 'scriora-social';
 import { inngest } from '../inngest/client.js';
+import {
+  failClaimedOutbox,
+  prepareOutboxDispatch,
+  recordPublishSuccessSafely,
+} from '../lib/outbox-safety.js';
 import { abortPublishIfBlocked } from '../lib/publication-dispatch-guard.js';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
@@ -59,22 +64,21 @@ export const publishJob = inngest.createFunction(
       return cmd;
     });
 
-    const blocked = abortPublishIfBlocked(outboxRecord.publication?.status);
-    if (blocked) {
-      return blocked;
-    }
-
-    // Mark Outbox PROCESSING
-    await step.run('claim-outbox', async () => {
-      await prisma.outboxCommand.update({
-        where: { id: outboxCommandId },
-        data: {
-          status: 'PROCESSING',
-          claimedAt: new Date(),
-          attempts: { increment: 1 },
-        },
+    const gate = await step.run('claim-outbox', async () => {
+      return prepareOutboxDispatch(prisma, {
+        outboxCommandId,
+        outboxStatus: outboxRecord.status,
+        publicationId: outboxRecord.publicationId ?? outboxRecord.publication?.id,
+        publicationStatus: outboxRecord.publication?.status,
       });
     });
+
+    if (gate.action === 'NOOP') {
+      return { status: 'NOOP', reason: gate.reason };
+    }
+    if (gate.action !== 'PROCEED') {
+      return { status: 'ABORTED', reason: gate.reason };
+    }
 
     const pub = outboxRecord.publication;
     if (!pub) {
@@ -141,6 +145,15 @@ export const publishJob = inngest.createFunction(
 
     // 3. Dispatch to Social Adapter
     const publishResult = await step.run('dispatch-to-platform', async () => {
+      const latestPublication = await prisma.publication.findUnique({
+        where: { id: pub.id },
+        select: { status: true },
+      });
+      const blocked = abortPublishIfBlocked(latestPublication?.status);
+      if (blocked) {
+        return { aborted: true as const, reason: blocked.reason };
+      }
+
       const adapter = platformRegistry.get(account.platform as unknown as SocialPlatformType);
       if (!adapter) {
         throw new Error(`No adapter registered for platform: ${account.platform}`);
@@ -195,39 +208,40 @@ export const publishJob = inngest.createFunction(
       }
     });
 
+    if ('aborted' in publishResult && publishResult.aborted) {
+      await step.run('abort-blocked-dispatch', async () => {
+        await failClaimedOutbox(prisma, outboxCommandId, {
+          code: 'DISPATCH_ABORTED',
+          message: publishResult.reason,
+        });
+      });
+      return { status: 'ABORTED', reason: publishResult.reason };
+    }
+
     // 4. Record result in Database
     if (publishResult.success && publishResult.result) {
       const { externalPostId, externalPostUrl } = publishResult.result;
 
-      await step.run('record-success', async () => {
-        await prisma.$transaction([
-          prisma.publishAttempt.update({
-            where: { id: outboxRecord.publishAttemptId },
-            data: {
-              status: 'SUCCEEDED',
-              externalId: externalPostId || null,
-              externalUrl: externalPostUrl || null,
-              completedAt: new Date(),
-            },
-          }),
-          prisma.publication.update({
-            where: { id: pub.id },
-            data: {
-              status: 'PUBLISHED',
-              publishedAt: new Date(),
-              externalPostId: externalPostId || null,
-              externalPostUrl: externalPostUrl || null,
-            },
-          }),
-          prisma.outboxCommand.update({
-            where: { id: outboxCommandId },
-            data: {
-              status: 'PUBLISHED',
-              processedAt: new Date(),
-            },
-          }),
-        ]);
+      const recorded = await step.run('record-success', async () => {
+        return recordPublishSuccessSafely(prisma, {
+          publicationId: pub.id,
+          outboxCommandId,
+          publishAttemptId: outboxRecord.publishAttemptId,
+          externalPostId,
+          externalPostUrl,
+        });
       });
+
+      if (recorded.outcome === 'CONFLICT_TERMINAL') {
+        return {
+          status: 'UNKNOWN_EXTERNAL_STATE',
+          reason: `Publication already ${recorded.publicationStatus}; refusing to overwrite with PUBLISHED`,
+        };
+      }
+
+      if (recorded.outcome === 'ALREADY_PUBLISHED') {
+        return { status: 'NOOP', reason: 'Publication already PUBLISHED' };
+      }
 
       // 5. Trigger post verification after 60 seconds (§3.1 Intent != Result)
       if (externalPostId) {
