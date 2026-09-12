@@ -12,3 +12,8 @@ test-results/
 .env.local
 .env.*.local
 *.log
+
+# Internal Confidential Documentation & Roadmaps (Private to Owner)
+docs/
+PROJECT_MASTER_ROADMAP.md
+apps/docs/architecture/
