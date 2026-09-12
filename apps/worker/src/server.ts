@@ -14,6 +14,7 @@ import {
   TelegramAdapter,
   ThreadsAdapter,
   XAdapter,
+  YouTubeAdapter,
 } from 'scriora-social';
 import { inngest } from './inngest.js';
 import { outboxSweepJob } from './jobs/outbox-sweep.job.js';
@@ -54,6 +55,11 @@ if (!platformRegistry.has('THREADS')) {
 if (!platformRegistry.has('FACEBOOK')) {
   try {
     platformRegistry.register(new FacebookAdapter());
+  } catch {}
+}
+if (!platformRegistry.has('YOUTUBE')) {
+  try {
+    platformRegistry.register(new YouTubeAdapter());
   } catch {}
 }
 

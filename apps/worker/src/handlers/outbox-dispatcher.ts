@@ -9,6 +9,7 @@ import {
   TelegramAdapter,
   ThreadsAdapter,
   XAdapter,
+  YouTubeAdapter,
 } from 'scriora-social';
 import { z } from 'zod';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
@@ -47,6 +48,11 @@ function ensureAdaptersRegistered() {
   if (!platformRegistry.has('FACEBOOK')) {
     try {
       platformRegistry.register(new FacebookAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('YOUTUBE')) {
+    try {
+      platformRegistry.register(new YouTubeAdapter());
     } catch {}
   }
 }

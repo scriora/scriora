@@ -176,6 +176,21 @@ server.tool(
                 .describe('Custom video thumbnail cover'),
             })
             .optional(),
+          youtubeOptions: z
+            .object({
+              title: z.string().max(100).optional().describe('Video title'),
+              description: z.string().max(5000).optional().describe('Video description'),
+              tags: z.array(z.string()).optional().describe('Keyword tags'),
+              privacyStatus: z.enum(['public', 'private', 'unlisted']).optional(),
+              isShort: z.boolean().optional().describe('True formats video as YouTube Shorts'),
+              thumbnailUrl: z
+                .string()
+                .url()
+                .optional()
+                .describe('Custom video thumbnail cover image URL'),
+              madeForKids: z.boolean().optional().describe('COPPA compliance flag'),
+            })
+            .optional(),
         })
       )
       .min(1)
@@ -238,6 +253,11 @@ server.resource('platform_limits', 'scriora://platforms/limits', async () => ({
             maxTextLength: 3000,
             maxMedia: 9,
             formats: ['TEXT', 'PHOTO', 'DOCUMENT_PDF'],
+          },
+          YOUTUBE: {
+            maxTextLength: 5000,
+            maxMedia: 1,
+            formats: ['VIDEO', 'SHORTS'],
           },
         },
         null,

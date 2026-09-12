@@ -11,6 +11,7 @@ import {
   TelegramAdapter,
   ThreadsAdapter,
   XAdapter,
+  YouTubeAdapter,
 } from 'scriora-social';
 import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
@@ -61,6 +62,13 @@ try {
 const realFacebook = new FacebookAdapter();
 try {
   platformRegistry.register(realFacebook);
+} catch {
+  // Already registered
+}
+
+const realYouTube = new YouTubeAdapter();
+try {
+  platformRegistry.register(realYouTube);
 } catch {
   // Already registered
 }

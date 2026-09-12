@@ -202,12 +202,39 @@ export const FacebookOptionsSchema = z.object({
   altText: z.string().max(1000).optional(),
 });
 
+export const YouTubePrivacyStatusSchema = z.enum(['public', 'private', 'unlisted']);
+export type YouTubePrivacyStatus = z.infer<typeof YouTubePrivacyStatusSchema>;
+
+export const YouTubeOptionsSchema = z.object({
+  /** Title of the video (up to 100 characters) */
+  title: z.string().min(1).max(100).optional(),
+  /** Full description / show notes / timestamps (up to 5000 characters) */
+  description: z.string().max(5000).optional(),
+  /** List of keyword tags (cumulative max 500 characters) */
+  tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  /** Category ID (e.g. '22' for People & Blogs, '28' for Science & Technology) */
+  categoryId: z.string().default('22').optional(),
+  /** Privacy status of the uploaded video */
+  privacyStatus: YouTubePrivacyStatusSchema.default('public').optional(),
+  /** Whether the video is declared as YouTube Shorts (auto-appends #Shorts if not present) */
+  isShort: z.boolean().optional(),
+  /** COPPA compliance declaration: whether video is made for children */
+  madeForKids: z.boolean().default(false).optional(),
+  /** Custom thumbnail cover image URL (uploaded via POST /thumbnails/set) */
+  thumbnailUrl: z.string().url().optional(),
+  /** Embeddable flag */
+  embeddable: z.boolean().default(true).optional(),
+  /** Scheduled publication timestamp in ISO 8601 (requires privacyStatus='private') */
+  publishAt: z.string().datetime().optional(),
+});
+export type YouTubeOptions = z.infer<typeof YouTubeOptionsSchema>;
+
 export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('LINKEDIN'), options: LinkedInOptionsSchema }),
   z.object({ platform: z.literal('X'), options: XOptionsSchema }),
   z.object({ platform: z.literal('INSTAGRAM'), options: InstagramOptionsSchema }),
   z.object({ platform: z.literal('TIKTOK'), options: TikTokOptionsSchema }),
-  z.object({ platform: z.literal('YOUTUBE'), options: z.object({}).passthrough() }),
+  z.object({ platform: z.literal('YOUTUBE'), options: YouTubeOptionsSchema }),
   z.object({ platform: z.literal('THREADS'), options: ThreadsOptionsSchema }),
   z.object({ platform: z.literal('FACEBOOK'), options: FacebookOptionsSchema }),
   z.object({ platform: z.literal('BLUESKY'), options: z.object({}).passthrough() }),

@@ -21,4 +21,7 @@ export * from './platforms/threads/threads.oauth.js';
 export * from './platforms/x/mock.adapter.js';
 export * from './platforms/x/x.adapter.js';
 export * from './platforms/x/x.oauth.js';
+export * from './platforms/youtube/mock.adapter.js';
+export * from './platforms/youtube/youtube.adapter.js';
+export * from './platforms/youtube/youtube.oauth.js';
 export * from './registry/platform.registry.js';

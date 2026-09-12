@@ -151,4 +151,22 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(location).toContain('client_id=');
     expect(location).toContain('state=');
   });
+
+  it('GET /v1/connect/youtube redirects to Google OAuth authorization URL', async () => {
+    process.env.YOUTUBE_CLIENT_ID = 'test_yt_client_id';
+    process.env.YOUTUBE_CLIENT_SECRET = 'test_yt_client_secret';
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/youtube?workspaceId=${validWsId}`,
+    });
+
+    expect(res.statusCode).toBe(302);
+    const location = res.headers.location;
+    expect(location).toBeDefined();
+    expect(location).toContain('https://accounts.google.com/o/oauth2/v2/auth');
+    expect(location).toContain('client_id=');
+    expect(location).toContain('access_type=offline');
+    expect(location).toContain('state=');
+  });
 });
