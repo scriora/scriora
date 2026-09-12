@@ -364,21 +364,23 @@ export class YouTubeAdapter implements PlatformAdapter {
   private async uploadVideoBuffer(
     sessionUrl: string,
     videoUrl: string,
-    accessToken: string
+    _accessToken?: string
   ): Promise<string> {
     try {
-      const videoRes = await axios.get<ArrayBuffer>(videoUrl, {
+      const videoRes = await axios.get<ArrayBuffer | Buffer>(videoUrl, {
         responseType: 'arraybuffer',
         timeout: 60000,
       });
 
-      const videoBuffer = Buffer.from(videoRes.data);
+      const videoBuffer = Buffer.isBuffer(videoRes.data)
+        ? videoRes.data
+        : Buffer.from(videoRes.data);
 
       const uploadRes = await axios.put<{ id: string }>(sessionUrl, videoBuffer, {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'video/mp4',
           'Content-Length': videoBuffer.length.toString(),
+          'Content-Range': `bytes 0-${videoBuffer.length - 1}/${videoBuffer.length}`,
         },
         maxBodyLength: Number.POSITIVE_INFINITY,
         maxContentLength: Number.POSITIVE_INFINITY,
