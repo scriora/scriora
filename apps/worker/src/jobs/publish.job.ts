@@ -151,7 +151,7 @@ export const publishJob = inngest.createFunction(
       });
       const blocked = abortPublishIfBlocked(latestPublication?.status);
       if (blocked) {
-        return { aborted: true as const, reason: blocked.reason };
+        return { kind: 'aborted' as const, reason: blocked.reason };
       }
 
       const adapter = platformRegistry.get(account.platform as unknown as SocialPlatformType);
@@ -187,11 +187,11 @@ export const publishJob = inngest.createFunction(
           },
         });
 
-        return { success: true as const, result };
+        return { kind: 'success' as const, result };
       } catch (err: unknown) {
         if (err instanceof PlatformError) {
           return {
-            success: false as const,
+            kind: 'failure' as const,
             code: err.code,
             message: err.message,
             retryable: err.retryable,
@@ -200,7 +200,7 @@ export const publishJob = inngest.createFunction(
         }
 
         return {
-          success: false as const,
+          kind: 'failure' as const,
           code: 'UNEXPECTED_FAILURE',
           message: err instanceof Error ? err.message : String(err),
           retryable: false,
@@ -208,7 +208,7 @@ export const publishJob = inngest.createFunction(
       }
     });
 
-    if ('aborted' in publishResult && publishResult.aborted) {
+    if (publishResult.kind === 'aborted') {
       await step.run('abort-blocked-dispatch', async () => {
         await failClaimedOutbox(prisma, outboxCommandId, {
           code: 'DISPATCH_ABORTED',
@@ -219,7 +219,7 @@ export const publishJob = inngest.createFunction(
     }
 
     // 4. Record result in Database
-    if (publishResult.success && publishResult.result) {
+    if (publishResult.kind === 'success' && publishResult.result) {
       const { externalPostId, externalPostUrl } = publishResult.result;
 
       const recorded = await step.run('record-success', async () => {
@@ -227,8 +227,8 @@ export const publishJob = inngest.createFunction(
           publicationId: pub.id,
           outboxCommandId,
           publishAttemptId: outboxRecord.publishAttemptId,
-          externalPostId,
-          externalPostUrl,
+          externalPostId: externalPostId ?? null,
+          externalPostUrl: externalPostUrl ?? null,
         });
       });
 
@@ -260,7 +260,7 @@ export const publishJob = inngest.createFunction(
     } else {
       // Handle failure
       const errorData = publishResult as {
-        success: false;
+        kind: 'failure';
         code: string;
         message: string;
         retryable: boolean;
