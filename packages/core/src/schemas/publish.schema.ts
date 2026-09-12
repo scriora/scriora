@@ -206,12 +206,25 @@ export const YouTubePrivacyStatusSchema = z.enum(['public', 'private', 'unlisted
 export type YouTubePrivacyStatus = z.infer<typeof YouTubePrivacyStatusSchema>;
 
 export const YouTubeOptionsSchema = z.object({
-  /** Title of the video (up to 100 characters) */
-  title: z.string().min(1).max(100).optional(),
+  /** Title of the video (up to 100 characters, < and > are prohibited by YouTube) */
+  title: z
+    .string()
+    .min(1)
+    .max(100)
+    .refine((val) => !/[<>]/.test(val), {
+      message: 'YouTube titles cannot contain < or > characters.',
+    })
+    .optional(),
   /** Full description / show notes / timestamps (up to 5000 characters) */
   description: z.string().max(5000).optional(),
-  /** List of keyword tags (cumulative max 500 characters) */
-  tags: z.array(z.string().min(1).max(100)).max(50).optional(),
+  /** List of keyword tags (cumulative max 500 characters across all tags) */
+  tags: z
+    .array(z.string().min(1).max(100))
+    .max(50)
+    .refine((items) => items.reduce((acc, tag) => acc + tag.length, 0) <= 500, {
+      message: 'Cumulative length of all YouTube tags must not exceed 500 characters.',
+    })
+    .optional(),
   /** Category ID (e.g. '22' for People & Blogs, '28' for Science & Technology) */
   categoryId: z.string().default('22').optional(),
   /** Privacy status of the uploaded video */
@@ -220,6 +233,10 @@ export const YouTubeOptionsSchema = z.object({
   isShort: z.boolean().optional(),
   /** COPPA compliance declaration: whether video is made for children */
   madeForKids: z.boolean().default(false).optional(),
+  /** AI-generated content disclosure (increasingly required by YouTube / Google) */
+  containsSyntheticMedia: z.boolean().default(false).optional(),
+  /** Auto-posted first comment after the video goes live (up to 10,000 characters) */
+  firstComment: z.string().max(10000).optional(),
   /** Custom thumbnail cover image URL (uploaded via POST /thumbnails/set) */
   thumbnailUrl: z.string().url().optional(),
   /** Embeddable flag */

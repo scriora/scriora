@@ -64,10 +64,10 @@ server.tool(
 // ── Tool 2: scriora_get_smart_slots ──────────────────────────────────────────
 server.tool(
   'scriora_get_smart_slots',
-  'Retrieves empirical peak posting windows (golden slots) backed by Buffer datasets (14M Facebook posts, 9.6M Instagram posts, 8.7M X posts, 2.5M Threads posts).',
+  'Retrieves empirical peak posting windows (golden slots) backed by Buffer datasets (14M Facebook posts, 9.6M Instagram posts, 8.7M X posts, 2.5M Threads posts, 1.8M YouTube videos/Shorts).',
   {
     platform: z
-      .enum(['LINKEDIN', 'X', 'INSTAGRAM', 'THREADS', 'FACEBOOK', 'GENERAL'])
+      .enum(['LINKEDIN', 'X', 'INSTAGRAM', 'THREADS', 'FACEBOOK', 'YOUTUBE', 'GENERAL'])
       .describe('Target platform for optimal timing'),
     timezone: z
       .string()
@@ -189,6 +189,15 @@ server.tool(
                 .optional()
                 .describe('Custom video thumbnail cover image URL'),
               madeForKids: z.boolean().optional().describe('COPPA compliance flag'),
+              containsSyntheticMedia: z
+                .boolean()
+                .optional()
+                .describe('AI-generated content disclosure'),
+              firstComment: z
+                .string()
+                .max(10000)
+                .optional()
+                .describe('Auto-posted first comment for links/discussion'),
             })
             .optional(),
         })
@@ -257,6 +266,9 @@ server.resource('platform_limits', 'scriora://platforms/limits', async () => ({
           YOUTUBE: {
             maxTextLength: 5000,
             maxMedia: 1,
+            maxShortsDurationSeconds: 180,
+            maxTitleLength: 100,
+            maxTagsLength: 500,
             formats: ['VIDEO', 'SHORTS'],
           },
         },

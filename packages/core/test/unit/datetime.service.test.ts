@@ -170,6 +170,28 @@ describe('DateTimeService', () => {
       expect(topSlot.source).toBe('BENCHMARK');
     });
 
+    it('generates YouTube-specific golden slots based on Buffer 1.8M video analysis (Sunday 10am #1, Friday 4pm Shorts)', () => {
+      const ytSlots = service.getSmartScheduleSlots({
+        timezone: 'Africa/Cairo',
+        startDate: new Date('2026-09-12T00:00:00Z'),
+        daysAhead: 7,
+        platform: 'YOUTUBE',
+      });
+
+      expect(ytSlots.length).toBeGreaterThan(0);
+      const topSlot = ytSlots[0];
+      expect(topSlot.score).toBe(100);
+      expect(topSlot.localTime).toBe('10:00');
+      expect(topSlot.recommendationReason).toContain('الأحد 10:00 ص');
+      expect(topSlot.recommendationReason).toContain('1.8M');
+      expect(topSlot.source).toBe('BENCHMARK');
+
+      // Check Friday Shorts golden slot exists
+      const fridayShortsSlot = ytSlots.find((s) => s.localTime === '16:00');
+      expect(fridayShortsSlot).toBeDefined();
+      expect(fridayShortsSlot?.recommendationReason).toContain('Shorts');
+    });
+
     it('adapts and learns when user post analytics confirm or boost benchmark windows (HYBRID_LEARNED)', () => {
       const baseDate = new Date('2026-09-12T00:00:00Z');
       // Historical post on Tuesday 9:00 AM Cairo time (2026-09-08 06:00 UTC) with massive engagement

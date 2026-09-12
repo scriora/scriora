@@ -21,6 +21,8 @@ export interface YouTubeMetadata {
   privacyStatus?: 'public' | 'private' | 'unlisted' | undefined;
   isShort?: boolean | undefined;
   madeForKids?: boolean | undefined;
+  containsSyntheticMedia?: boolean | undefined;
+  firstComment?: string | undefined;
   thumbnailUrl?: string | undefined;
   embeddable?: boolean | undefined;
   publishAt?: string | undefined;
@@ -89,8 +91,9 @@ export class YouTubeAdapter implements PlatformAdapter {
     const videoUrl = mediaUrls[0];
     const metadata = (request.metadata || {}) as YouTubeMetadata;
 
-    // Determine title (max 100 characters)
+    // Determine title (max 100 characters, sanitize < and > as prohibited by YouTube API)
     let title = metadata.title || request.text?.split('\n')[0]?.trim() || 'Untitled Video';
+    title = title.replace(/[<>]/g, '').trim() || 'Untitled Video';
     if (title.length > 100) {
       title = `${title.slice(0, 97)}...`;
     }
@@ -114,7 +117,19 @@ export class YouTubeAdapter implements PlatformAdapter {
     const privacyStatus = metadata.privacyStatus || 'public';
     const categoryId = metadata.categoryId || '22';
     const madeForKids = Boolean(metadata.madeForKids);
-    const tags = Array.isArray(metadata.tags) ? metadata.tags : [];
+    const containsSyntheticMedia = Boolean(metadata.containsSyntheticMedia);
+
+    // YouTube limits cumulative length of all tags to <= 500 characters
+    const rawTags = Array.isArray(metadata.tags) ? metadata.tags : [];
+    let cumulativeTagsLen = 0;
+    const tags: string[] = [];
+    for (const rawTag of rawTags) {
+      const clean = rawTag.trim();
+      if (clean && cumulativeTagsLen + clean.length <= 500) {
+        tags.push(clean);
+        cumulativeTagsLen += clean.length;
+      }
+    }
 
     // Step 1: Initiate Resumable Upload Session
     const sessionUrl = await this.initiateResumableSession(accessToken, {
@@ -124,6 +139,7 @@ export class YouTubeAdapter implements PlatformAdapter {
       categoryId,
       privacyStatus,
       madeForKids,
+      containsSyntheticMedia,
       embeddable: metadata.embeddable ?? true,
       publishAt: metadata.publishAt,
     });
@@ -142,6 +158,22 @@ export class YouTubeAdapter implements PlatformAdapter {
       });
     }
 
+    // Step 4: Auto-post First Comment (optional, up to 10,000 chars)
+    let commentId: string | undefined;
+    if (metadata.firstComment?.trim()) {
+      commentId = await this.postFirstComment(
+        videoId,
+        metadata.firstComment.trim(),
+        accessToken
+      ).catch((err) => {
+        console.warn(
+          `[YouTubeAdapter] Warning: First comment posting failed for video ${videoId}:`,
+          err
+        );
+        return undefined;
+      });
+    }
+
     const externalPostUrl = isShort
       ? `https://www.youtube.com/shorts/${videoId}`
       : `https://www.youtube.com/watch?v=${videoId}`;
@@ -157,6 +189,9 @@ export class YouTubeAdapter implements PlatformAdapter {
         privacyStatus,
         categoryId,
         hasCustomThumbnail: Boolean(metadata.thumbnailUrl),
+        containsSyntheticMedia,
+        hasFirstComment: Boolean(commentId),
+        commentId,
       },
       operationId: request.idempotencyKey,
       publishedAt: new Date(),
@@ -255,6 +290,7 @@ export class YouTubeAdapter implements PlatformAdapter {
       categoryId: string;
       privacyStatus: string;
       madeForKids: boolean;
+      containsSyntheticMedia: boolean;
       embeddable: boolean;
       publishAt?: string | undefined;
     }
@@ -274,6 +310,9 @@ export class YouTubeAdapter implements PlatformAdapter {
             selfDeclaredMadeForKids: params.madeForKids,
             embeddable: params.embeddable,
             ...(params.publishAt ? { publishAt: params.publishAt } : {}),
+            ...(params.containsSyntheticMedia !== undefined
+              ? { containsSyntheticMedia: params.containsSyntheticMedia }
+              : {}),
           },
         },
         {
@@ -393,5 +432,32 @@ export class YouTubeAdapter implements PlatformAdapter {
         'Content-Length': thumbBuffer.length.toString(),
       },
     });
+  }
+
+  private async postFirstComment(
+    videoId: string,
+    commentText: string,
+    accessToken: string
+  ): Promise<string> {
+    const res = await axios.post<{ id: string }>(
+      `${this.baseUrl}/commentThreads?part=snippet`,
+      {
+        snippet: {
+          videoId,
+          topLevelComment: {
+            snippet: {
+              textOriginal: commentText,
+            },
+          },
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+    return res.data.id;
   }
 }

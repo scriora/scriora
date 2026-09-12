@@ -780,6 +780,67 @@ export class DateTimeService {
       },
     ];
 
+    const youtubeSlotTemplates = [
+      {
+        dayOfWeek: 0, // Sunday
+        hour: 10,
+        minute: 0,
+        score: 100,
+        reason:
+          'الأحد 10:00 ص: أعلى أوقات التفاعل عالمياً لفيديوهات يوتيوب الطويلة عبر دراسة Buffer لـ 1.8M فيديو (معامل تفاعل 0.95)',
+      },
+      {
+        dayOfWeek: 0, // Sunday
+        hour: 9,
+        minute: 0,
+        score: 95,
+        reason: 'الأحد 9:00 ص: ذروة التصفح والمشاهدة الصباحية في عطلة نهاية الأسبوع (معامل تفاعل 0.80)',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 16,
+        minute: 0,
+        score: 95,
+        reason:
+          'الجمعة 4:00 م: التوقيت الذهبي الأول لـ YouTube Shorts (الأعلى تفاعلاً للأسبوع بأكمله في دراسة Buffer)',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 12,
+        minute: 0,
+        score: 92,
+        reason: 'الجمعة 12:00 م: ذروة استراحة الغداء وتفاعل قوي لفيديوهات يوتيوب (معامل تفاعل 0.70)',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 18,
+        minute: 0,
+        score: 91,
+        reason: 'الجمعة 6:00 م: توقيت مسائي قوي لـ YouTube Shorts ومشاهدات الاسترخاء بعد أسبوع العمل',
+      },
+      {
+        dayOfWeek: 2, // Tuesday
+        hour: 9,
+        minute: 0,
+        score: 88,
+        reason: 'الثلاثاء 9:00 ص: أفضل أوقات أيام العمل الصباحية للفيديوهات التعليمية والتقنية على يوتيوب',
+      },
+      {
+        dayOfWeek: 1, // Monday
+        hour: 9,
+        minute: 0,
+        score: 85,
+        reason: 'الاثنين 9:00 ص: انطلاقة قوية للأسبوع وإقبال على الفيديوهات التحفيزية والإخبارية',
+      },
+      {
+        dayOfWeek: 6, // Saturday
+        hour: 12,
+        minute: 0,
+        score: 83,
+        reason: 'السبت 12:00 م: مشاهدات مستقرة وممتدة في عطلة نهاية الأسبوع',
+      },
+    ];
+
     const baseTemplates =
       platform === 'X'
         ? xSlotTemplates
@@ -789,7 +850,9 @@ export class DateTimeService {
             ? threadsSlotTemplates
             : platform === 'FACEBOOK'
               ? facebookSlotTemplates
-              : linkedInSlotTemplates;
+              : platform === 'YOUTUBE'
+                ? youtubeSlotTemplates
+                : linkedInSlotTemplates;
     const learnedTemplates = this.learnScheduleTemplates(
       history,
       timezone,

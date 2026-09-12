@@ -366,6 +366,52 @@ export class CrossPostOptimizer {
               'Consider publishing as a photo/carousel post and placing the link in the first comment.',
           });
         }
+      } else if (platform === 'YOUTUBE') {
+        // 1. YouTube title forbidden characters
+        const firstLine = rawBody.split('\n')[0]?.trim() || '';
+        if (/[<>]/.test(firstLine)) {
+          issues.push({
+            severity: 'ERROR',
+            code: 'YOUTUBE_TITLE_FORBIDDEN_CHARACTERS',
+            message:
+              'YouTube titles cannot contain < or > characters. They will be rejected by the YouTube Data API.',
+            suggestedAction: 'Remove < and > from the title / first line.',
+          });
+        }
+        // 2. Title length preview warning
+        if (firstLine.length > 70 && firstLine.length <= 100) {
+          issues.push({
+            severity: 'WARNING',
+            code: 'YOUTUBE_TITLE_MOBILE_TRUNCATION',
+            message: `Title is ${firstLine.length} chars. Mobile YouTube feeds truncate titles longer than 60–70 characters.`,
+            suggestedAction: 'Keep primary hook in the first 50–60 characters to maximize CTR.',
+          });
+        }
+        // 3. YouTube Tags cumulative length heuristic
+        if (hashtags.length > 0) {
+          const cumulativeTagLength = hashtags.reduce(
+            (sum, h) => sum + h.replace(/^#/, '').length,
+            0
+          );
+          if (cumulativeTagLength > 500) {
+            issues.push({
+              severity: 'WARNING',
+              code: 'YOUTUBE_TAGS_EXCEED_500_CHARS',
+              message: `Cumulative tag length is ${cumulativeTagLength} chars. YouTube limits total tags to 500 characters.`,
+              suggestedAction: 'Trim tags to fit under the 500-character cumulative limit.',
+            });
+          }
+        }
+        // 4. Link in first comment recommendation (Buffer/PostPeer advice)
+        if (urls.length > 0) {
+          issues.push({
+            severity: 'SUGGESTION',
+            code: 'YOUTUBE_FIRST_COMMENT_LINKS',
+            message:
+              'Placing outbound community/affiliate links in the pinned first comment keeps descriptions clean and encourages viewer comments.',
+            suggestedAction: 'Use youtubeOptions.firstComment for links and discussion prompts.',
+          });
+        }
       }
 
       results[platform] = {

@@ -98,6 +98,44 @@ describe('CrossPostOptimizer (Buffer & Postiz Heuristics)', () => {
     );
   });
 
+  it('validates YouTube titles for prohibited < and > characters and warns about mobile truncation', () => {
+    const result = crossPostOptimizer.optimize({
+      body: 'How to build <AI Agents> with Node.js & TypeScript and make $10k/month on YouTube easily',
+      targetPlatforms: ['YOUTUBE'],
+      mediaUrls: ['https://example.com/video.mp4'],
+    });
+
+    expect(result.YOUTUBE.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'YOUTUBE_TITLE_FORBIDDEN_CHARACTERS',
+          severity: 'ERROR',
+        }),
+        expect.objectContaining({
+          code: 'YOUTUBE_TITLE_MOBILE_TRUNCATION',
+          severity: 'WARNING',
+        }),
+      ])
+    );
+  });
+
+  it('suggests placing links in firstComment on YouTube', () => {
+    const result = crossPostOptimizer.optimize({
+      body: 'Check out the full repository here: https://github.com/scriora/scriora',
+      targetPlatforms: ['YOUTUBE'],
+      mediaUrls: ['https://example.com/video.mp4'],
+    });
+
+    expect(result.YOUTUBE.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'YOUTUBE_FIRST_COMMENT_LINKS',
+          severity: 'SUGGESTION',
+        }),
+      ])
+    );
+  });
+
   it('correctly splits long paragraphs without cutting words', () => {
     const text =
       'Sentence one is short. Sentence two is slightly longer and contains informative details. ' +

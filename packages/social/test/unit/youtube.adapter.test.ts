@@ -391,6 +391,117 @@ describe('YouTube Adapter & OAuth Suite', () => {
       expect(metrics.comments).toBe(195);
       expect(metrics.shares).toBe(0);
     });
+
+    it('sanitizes < and > characters from titles and filters cumulative tags exceeding 500 chars', async () => {
+      // 1. Session initiation
+      mockedAxios.post.mockResolvedValueOnce({
+        headers: {
+          location: 'https://upload.youtube.com/upload_session_sanitized',
+        },
+      });
+
+      // 2. Video download
+      mockedAxios.get.mockResolvedValueOnce({
+        data: Buffer.from('mock video bytes'),
+      });
+
+      // 3. Resumable binary upload
+      mockedAxios.put.mockResolvedValueOnce({
+        data: { id: 'v_sanitized_title_123' },
+      });
+
+      const res = await adapter.publish(
+        {
+          workspaceId: '11111111-1111-4111-8111-111111111111',
+          accountId: 'UC_test_chan',
+          text: 'Clean description',
+          mediaUrls: ['https://cdn.example.com/clean.mp4'],
+          idempotencyKey: 'idemp-sanitized',
+          fingerprint: '1'.repeat(64),
+          metadata: {
+            title: 'Learn <Next.js 16> & <React 19> Guide',
+            tags: ['tech', 'coding', 'a'.repeat(480), 'should_be_dropped_because_exceeds_500'],
+            containsSyntheticMedia: true,
+          },
+        },
+        'fake_token'
+      );
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.platformMetadata?.title).toBe('Learn Next.js 16 & React 19 Guide');
+      expect(res.platformMetadata?.containsSyntheticMedia).toBe(true);
+
+      // Verify initiateResumableSession payload
+      const initCall = mockedAxios.post.mock.calls[0];
+      const payload = initCall?.[1] as {
+        snippet: { title: string; tags: string[] };
+        status: { containsSyntheticMedia: boolean };
+      };
+      expect(payload.snippet.title).toBe('Learn Next.js 16 & React 19 Guide');
+      expect(payload.status.containsSyntheticMedia).toBe(true);
+      const totalTagsLength = payload.snippet.tags.reduce((acc, t) => acc + t.length, 0);
+      expect(totalTagsLength).toBeLessThanOrEqual(500);
+    });
+
+    it('posts firstComment to commentThreads when provided', async () => {
+      // 1. Session initiation
+      mockedAxios.post.mockResolvedValueOnce({
+        headers: {
+          location: 'https://upload.youtube.com/upload_session_comment',
+        },
+      });
+
+      // 2. Video download
+      mockedAxios.get.mockResolvedValueOnce({
+        data: Buffer.from('mock video bytes'),
+      });
+
+      // 3. Resumable binary upload
+      mockedAxios.put.mockResolvedValueOnce({
+        data: { id: 'v_with_first_comment_456' },
+      });
+
+      // 4. commentThreads.insert
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { id: 'comment_thread_abc_789' },
+      });
+
+      const res = await adapter.publish(
+        {
+          workspaceId: '11111111-1111-4111-8111-111111111111',
+          accountId: 'UC_test_chan',
+          text: 'Video caption',
+          mediaUrls: ['https://cdn.example.com/video.mp4'],
+          idempotencyKey: 'idemp-comment',
+          fingerprint: '2'.repeat(64),
+          metadata: {
+            title: 'Title with First Comment',
+            firstComment: 'Join our Discord server: https://discord.gg/scriora',
+          },
+        },
+        'fake_token'
+      );
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.platformMetadata?.hasFirstComment).toBe(true);
+      expect(res.platformMetadata?.commentId).toBe('comment_thread_abc_789');
+
+      // Verify commentThreads API call
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://www.googleapis.com/youtube/v3/commentThreads?part=snippet',
+        {
+          snippet: {
+            videoId: 'v_with_first_comment_456',
+            topLevelComment: {
+              snippet: {
+                textOriginal: 'Join our Discord server: https://discord.gg/scriora',
+              },
+            },
+          },
+        },
+        expect.anything()
+      );
+    });
   });
 
   describe('Mock Adapter', () => {
