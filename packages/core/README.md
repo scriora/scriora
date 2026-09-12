@@ -3,7 +3,8 @@
 Business domain engine for Scriora.
 
 **Mandate:** Owns all business state, domain entities, state machines,
-application contracts, database schema (Prisma), and RLS policies.
+application contracts, and the Prisma database schema. Tenant isolation is
+enforced in application queries via `workspaceId` (Postgres RLS is not applied).
 
 **Type:** Node.js library  -  NOT a standalone HTTP server.
 Only imported by: scriora-api, scriora-worker, scriora-agent (contracts only).

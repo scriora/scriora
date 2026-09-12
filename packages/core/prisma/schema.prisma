@@ -409,7 +409,7 @@ model SocialAccount {
 
 model SecretEnvelope {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  socialAccountId String        @map("social_account_id") @db.Uuid
+  socialAccountId String        @unique @map("social_account_id") @db.Uuid
   envelopeData    Bytes         @map("envelope_data")
   keyId           String        @map("key_id") @db.VarChar(100)
   algorithm       String        @default("AES-256-GCM") @db.VarChar(50)
@@ -418,7 +418,6 @@ model SecretEnvelope {
 
   socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
-  @@index([socialAccountId])
   @@map("secret_envelopes")
 }
 
@@ -582,6 +581,8 @@ model Approval {
 
   @@index([workspaceId, status])
   @@index([resourceType, resourceId])
+  /// Partial unique (SQL): one PENDING row per (workspace_id, resource_type, resource_id).
+  /// Enforced in migrations — Prisma cannot express WHERE status = 'PENDING'.
   @@map("approvals")
 }
 
@@ -589,7 +590,7 @@ model ApprovalToken {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId String    @map("workspace_id") @db.Uuid
   approvalId  String    @map("approval_id") @db.Uuid
-  tokenHash   String    @map("token_hash") @db.Char(64)
+  tokenHash   String    @unique @map("token_hash") @db.Char(64)
   expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
   nonce       String    @db.VarChar(64)
   usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
@@ -598,7 +599,6 @@ model ApprovalToken {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   approval    Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
 
-  @@index([tokenHash])
   @@index([expiresAt])
   @@map("approval_tokens")
 }
