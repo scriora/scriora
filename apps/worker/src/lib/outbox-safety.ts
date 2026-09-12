@@ -303,3 +303,82 @@ export async function recordPublishSuccessSafely(
     return { outcome: 'CONFLICT_TERMINAL', publicationStatus };
   });
 }
+
+export type RecordUnknownExternalStateOutcome =
+  | { outcome: 'UNKNOWN_EXTERNAL_STATE' }
+  | { outcome: 'ALREADY_PUBLISHED' }
+  | { outcome: 'ALREADY_UNKNOWN' };
+
+export type RecordUnknownExternalStateInput = RecordPublishSuccessInput & {
+  reason: string;
+};
+
+/**
+ * Platform accepted (or may have accepted) but we have no trustworthy
+ * externalPostId — or an unexpected error after publish was invoked.
+ * Do not mark PUBLISHED and do not leave the outbox PENDING for a blind retry.
+ */
+export async function recordUnknownExternalState(
+  db: RecordPublishSuccessClient,
+  input: RecordUnknownExternalStateInput,
+  now = new Date()
+): Promise<RecordUnknownExternalStateOutcome> {
+  return db.$transaction(async (tx) => {
+    const current = await tx.publication.findUnique({
+      where: { id: input.publicationId },
+      select: { status: true },
+    });
+    const publicationStatus = current?.status ?? 'MISSING';
+
+    if (publicationStatus === 'PUBLISHED') {
+      await tx.outboxCommand.update({
+        where: { id: input.outboxCommandId },
+        data: {
+          status: 'PUBLISHED',
+          processedAt: now,
+        },
+      });
+      return { outcome: 'ALREADY_PUBLISHED' };
+    }
+
+    if (publicationStatus !== 'UNKNOWN_EXTERNAL_STATE') {
+      await tx.publication.updateMany({
+        where: {
+          id: input.publicationId,
+          status: { notIn: ['PUBLISHED'] },
+        },
+        data: { status: 'UNKNOWN_EXTERNAL_STATE' },
+      });
+    }
+
+    await tx.publishAttempt.update({
+      where: { id: input.publishAttemptId },
+      data: {
+        status: 'UNKNOWN_EXTERNAL_STATE',
+        errorCode: 'UNKNOWN_EXTERNAL_STATE',
+        errorMessage: input.reason,
+        externalId: input.externalPostId || null,
+        externalUrl: input.externalPostUrl || null,
+        completedAt: now,
+      },
+    });
+    await tx.outboxCommand.update({
+      where: { id: input.outboxCommandId },
+      data: {
+        status: 'FAILED',
+        lastError: {
+          code: 'UNKNOWN_EXTERNAL_STATE',
+          reason: input.reason,
+        },
+        processedAt: now,
+      },
+    });
+
+    return {
+      outcome:
+        publicationStatus === 'UNKNOWN_EXTERNAL_STATE'
+          ? 'ALREADY_UNKNOWN'
+          : 'UNKNOWN_EXTERNAL_STATE',
+    };
+  });
+}

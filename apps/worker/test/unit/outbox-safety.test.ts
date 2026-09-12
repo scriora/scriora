@@ -6,6 +6,7 @@ import {
   isTerminalPublicationStatus,
   prepareOutboxDispatch,
   recordPublishSuccessSafely,
+  recordUnknownExternalState,
   TERMINAL_OUTBOX_STATUSES,
   TERMINAL_PUBLICATION_STATUSES,
 } from '../../src/lib/outbox-safety.js';
@@ -334,5 +335,73 @@ describe('recordPublishSuccessSafely', () => {
     expect(publicationUpdateMany.mock.calls[0][0].where.status).toEqual({
       notIn: ['PUBLISHED', 'FAILED', 'CANCELLED', 'UNKNOWN_EXTERNAL_STATE'],
     });
+  });
+});
+
+describe('recordUnknownExternalState', () => {
+  function unknownDb(currentStatus: string) {
+    const publicationUpdateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const publicationFindUnique = vi.fn().mockResolvedValue({ status: currentStatus });
+    const publishAttemptUpdate = vi.fn().mockResolvedValue({});
+    const outboxUpdate = vi.fn().mockResolvedValue({});
+    const tx = {
+      publication: { updateMany: publicationUpdateMany, findUnique: publicationFindUnique },
+      publishAttempt: { update: publishAttemptUpdate },
+      outboxCommand: { update: outboxUpdate },
+    };
+    const db = {
+      $transaction: vi.fn(async (fn: (tx: typeof tx) => unknown) => fn(tx)),
+      publication: tx.publication,
+      publishAttempt: tx.publishAttempt,
+      outboxCommand: tx.outboxCommand,
+    };
+    return { db, publicationUpdateMany, publishAttemptUpdate, outboxUpdate };
+  }
+
+  const input = {
+    publicationId: 'pub-1',
+    outboxCommandId: 'outbox-1',
+    publishAttemptId: 'attempt-1',
+    externalPostId: null,
+    externalPostUrl: null,
+    reason: 'Platform accepted the publish but returned no externalPostId',
+  };
+
+  it('marks publication UNKNOWN_EXTERNAL_STATE and fails the outbox when success has no id', async () => {
+    const { db, publicationUpdateMany, publishAttemptUpdate, outboxUpdate } = unknownDb('READY');
+
+    const result = await recordUnknownExternalState(db as any, input);
+
+    expect(result).toEqual({ outcome: 'UNKNOWN_EXTERNAL_STATE' });
+    expect(publicationUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'pub-1', status: { notIn: ['PUBLISHED'] } },
+      data: { status: 'UNKNOWN_EXTERNAL_STATE' },
+    });
+    expect(publishAttemptUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'UNKNOWN_EXTERNAL_STATE',
+          errorCode: 'UNKNOWN_EXTERNAL_STATE',
+          errorMessage: input.reason,
+        }),
+      })
+    );
+    expect(outboxUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'FAILED',
+          lastError: expect.objectContaining({ code: 'UNKNOWN_EXTERNAL_STATE' }),
+        }),
+      })
+    );
+  });
+
+  it('does not overwrite an already-PUBLISHED publication', async () => {
+    const { db, publicationUpdateMany } = unknownDb('PUBLISHED');
+
+    const result = await recordUnknownExternalState(db as any, input);
+
+    expect(result).toEqual({ outcome: 'ALREADY_PUBLISHED' });
+    expect(publicationUpdateMany).not.toHaveBeenCalled();
   });
 });

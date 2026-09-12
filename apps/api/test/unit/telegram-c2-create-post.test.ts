@@ -247,7 +247,11 @@ describe('handleTelegramC2ApprovalDecision', () => {
       },
       outboxCommand: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'outbox-after-approve' }),
+        create: vi.fn().mockResolvedValue({
+          id: 'outbox-after-approve',
+          availableAt: new Date('2026-09-12T11:00:00.000Z'),
+          status: 'PENDING',
+        }),
         deleteMany: vi.fn(),
       },
     };
@@ -272,9 +276,13 @@ describe('handleTelegramC2ApprovalDecision', () => {
       ),
     };
 
-    await expect(handleTelegramC2ApprovalDecision(db as any, 'raw-token', 'APPROVED')).resolves.toBe(
-      true
-    );
+    const send = vi.fn().mockResolvedValue({ ids: ['evt-1'] });
+
+    await expect(
+      handleTelegramC2ApprovalDecision(db as any, 'raw-token', 'APPROVED', {
+        sendPublicationRequested: send,
+      })
+    ).resolves.toBe(true);
     expect(mockTx.publication.update).toHaveBeenCalledWith({
       where: { id: publicationId },
       data: { status: 'READY' },
@@ -288,6 +296,10 @@ describe('handleTelegramC2ApprovalDecision', () => {
         }),
       })
     );
+    expect(send).toHaveBeenCalledWith({
+      name: 'scriora/publication.requested',
+      data: { outboxCommandId: 'outbox-after-approve' },
+    });
   });
 
   it('returns false for a missing or expired token', async () => {

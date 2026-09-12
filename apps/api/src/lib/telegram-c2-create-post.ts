@@ -15,6 +15,8 @@ import {
   type PublishTarget,
 } from 'scriora-core';
 import { maybeSendTelegramApprovalRequests } from './approval-delivery.js';
+import type { PublicationRequestedSender } from './publication-requested.js';
+import { maybeDispatchPublicationRequested } from './publication-requested.js';
 import { enqueueApprovedPublicationOutbox } from './social-publish-outbox.js';
 
 export interface TelegramC2Workspace {
@@ -141,15 +143,22 @@ export async function createTelegramC2Post(
   };
 }
 
+export interface TelegramC2ApprovalDecisionDeps {
+  dispatchPublicationRequested?: typeof maybeDispatchPublicationRequested;
+  sendPublicationRequested?: PublicationRequestedSender;
+}
+
 /**
  * Apply a Telegram inline-button decision using the same outbox gate as
  * POST /v1/approve/:token/decision: APPROVED creates a sweepable SOCIAL_PUBLISH
- * outbox; REJECTED cancels and deletes any PENDING outbox.
+ * outbox and immediately emits scriora/publication.requested when available;
+ * REJECTED cancels and deletes any PENDING outbox.
  */
 export async function handleTelegramC2ApprovalDecision(
   db: PrismaClient,
   token: string,
-  decision: 'APPROVED' | 'REJECTED'
+  decision: 'APPROVED' | 'REJECTED',
+  deps: TelegramC2ApprovalDecisionDeps = {}
 ): Promise<boolean> {
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
@@ -162,7 +171,7 @@ export async function handleTelegramC2ApprovalDecision(
     return false;
   }
 
-  await db.$transaction(async (tx) => {
+  const queued = await db.$transaction(async (tx) => {
     await tx.approvalToken.update({
       where: { id: tokenRecord.id },
       data: { usedAt: new Date() },
@@ -178,7 +187,7 @@ export async function handleTelegramC2ApprovalDecision(
     });
 
     if (tokenRecord.approval.resourceType !== 'PUBLICATION') {
-      return;
+      return { outboxCommandId: null, availableAt: null, status: null, created: false };
     }
 
     const publicationId = tokenRecord.approval.resourceId;
@@ -188,13 +197,20 @@ export async function handleTelegramC2ApprovalDecision(
     });
 
     if (decision === 'APPROVED') {
-      await enqueueApprovedPublicationOutbox(tx, publicationId);
-    } else {
-      await tx.outboxCommand.deleteMany({
-        where: { publicationId, status: 'PENDING' },
-      });
+      return enqueueApprovedPublicationOutbox(tx, publicationId);
     }
+    await tx.outboxCommand.deleteMany({
+      where: { publicationId, status: 'PENDING' },
+    });
+    return { outboxCommandId: null, availableAt: null, status: null, created: false };
   });
+
+  if (decision === 'APPROVED') {
+    const dispatch = deps.dispatchPublicationRequested ?? maybeDispatchPublicationRequested;
+    await dispatch(queued, {
+      ...(deps.sendPublicationRequested ? { send: deps.sendPublicationRequested } : {}),
+    });
+  }
 
   return true;
 }

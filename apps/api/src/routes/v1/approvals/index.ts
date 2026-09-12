@@ -2,8 +2,12 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { ApprovalDecisionSchema, prisma } from 'scriora-core';
 import { z } from 'zod';
+import { maybeDispatchPublicationRequested } from '../../../lib/publication-requested.js';
 import { err, ok } from '../../../lib/response.js';
-import { enqueueApprovedPublicationOutbox } from '../../../lib/social-publish-outbox.js';
+import {
+  type EnqueuedApprovedOutbox,
+  enqueueApprovedPublicationOutbox,
+} from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
@@ -154,7 +158,7 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
     const approval = tokenRecord.approval;
 
-    await prisma.$transaction(async (tx) => {
+    const queued: EnqueuedApprovedOutbox = await prisma.$transaction(async (tx) => {
       // Mark token consumed
       await tx.approvalToken.update({
         where: { id: tokenRecord.id },
@@ -181,14 +185,19 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
         if (decision === 'APPROVED') {
           // Create a sweepable PENDING outbox only after the §14 gate passes.
-          await enqueueApprovedPublicationOutbox(tx, approval.resourceId);
-        } else {
-          await tx.outboxCommand.deleteMany({
-            where: { publicationId: approval.resourceId, status: 'PENDING' },
-          });
+          return enqueueApprovedPublicationOutbox(tx, approval.resourceId);
         }
+        await tx.outboxCommand.deleteMany({
+          where: { publicationId: approval.resourceId, status: 'PENDING' },
+        });
       }
+
+      return { outboxCommandId: null, availableAt: null, status: null, created: false };
     });
+
+    if (decision === 'APPROVED') {
+      await maybeDispatchPublicationRequested(queued);
+    }
 
     return reply.status(200).send(
       ok(

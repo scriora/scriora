@@ -26,7 +26,11 @@ describe('social-publish-outbox helpers', () => {
   it('reuses an existing PENDING outbox instead of creating a second command', async () => {
     const tx = {
       outboxCommand: {
-        findFirst: vi.fn().mockResolvedValue({ id: 'existing-outbox' }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'existing-outbox',
+          availableAt: new Date('2026-09-12T00:00:00.000Z'),
+          status: 'PENDING',
+        }),
         create: vi.fn(),
       },
       publication: { findUnique: vi.fn() },
@@ -34,7 +38,12 @@ describe('social-publish-outbox helpers', () => {
 
     const result = await enqueueApprovedPublicationOutbox(tx as any, 'pub-1');
 
-    expect(result).toEqual({ outboxCommandId: 'existing-outbox' });
+    expect(result).toEqual({
+      outboxCommandId: 'existing-outbox',
+      availableAt: new Date('2026-09-12T00:00:00.000Z'),
+      status: 'PENDING',
+      created: false,
+    });
     expect(tx.outboxCommand.create).not.toHaveBeenCalled();
     expect(tx.publication.findUnique).not.toHaveBeenCalled();
   });
@@ -44,7 +53,11 @@ describe('social-publish-outbox helpers', () => {
     const tx = {
       outboxCommand: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'new-outbox' }),
+        create: vi.fn().mockResolvedValue({
+          id: 'new-outbox',
+          availableAt: scheduledAt,
+          status: 'PENDING',
+        }),
       },
       publication: {
         findUnique: vi.fn().mockResolvedValue({
@@ -66,7 +79,12 @@ describe('social-publish-outbox helpers', () => {
 
     const result = await enqueueApprovedPublicationOutbox(tx as any, 'pub-1');
 
-    expect(result).toEqual({ outboxCommandId: 'new-outbox' });
+    expect(result).toEqual({
+      outboxCommandId: 'new-outbox',
+      availableAt: scheduledAt,
+      status: 'PENDING',
+      created: true,
+    });
     expect(tx.outboxCommand.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         publicationId: 'pub-1',

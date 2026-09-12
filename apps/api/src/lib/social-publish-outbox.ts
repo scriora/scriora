@@ -50,20 +50,32 @@ export function platformOptionsFromVariantMetadata(metadata: unknown): Record<st
  * does not already exist. availableAt honors scheduledAt so scheduled+approval
  * still waits for the scheduled time.
  */
+export type EnqueuedApprovedOutbox = {
+  outboxCommandId: string | null;
+  availableAt: Date | null;
+  status: 'PENDING' | 'PROCESSING' | null;
+  created: boolean;
+};
+
 export async function enqueueApprovedPublicationOutbox(
   tx: Prisma.TransactionClient,
   publicationId: string
-): Promise<{ outboxCommandId: string | null }> {
+): Promise<EnqueuedApprovedOutbox> {
   const existing = await tx.outboxCommand.findFirst({
     where: {
       publicationId,
       status: { in: ['PENDING', 'PROCESSING'] },
     },
-    select: { id: true },
+    select: { id: true, availableAt: true, status: true },
   });
 
   if (existing) {
-    return { outboxCommandId: existing.id };
+    return {
+      outboxCommandId: existing.id,
+      availableAt: existing.availableAt,
+      status: existing.status as 'PENDING' | 'PROCESSING',
+      created: false,
+    };
   }
 
   const publication = await tx.publication.findUnique({
@@ -80,12 +92,12 @@ export async function enqueueApprovedPublicationOutbox(
   });
 
   if (!publication) {
-    return { outboxCommandId: null };
+    return { outboxCommandId: null, availableAt: null, status: null, created: false };
   }
 
   const attemptId = publication.publishAttempts[0]?.id;
   if (!attemptId) {
-    return { outboxCommandId: null };
+    return { outboxCommandId: null, availableAt: null, status: null, created: false };
   }
 
   const metadata = publication.contentVariant.metadata;
@@ -112,5 +124,10 @@ export async function enqueueApprovedPublicationOutbox(
     },
   });
 
-  return { outboxCommandId: outbox.id };
+  return {
+    outboxCommandId: outbox.id,
+    availableAt: outbox.availableAt ?? null,
+    status: 'PENDING',
+    created: true,
+  };
 }

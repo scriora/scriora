@@ -1,6 +1,7 @@
 import { prisma } from 'scriora-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
+import * as publicationRequested from '../../src/lib/publication-requested.js';
 
 describe('API Routes — Approvals', () => {
   const app = buildApp();
@@ -34,7 +35,7 @@ describe('API Routes — Approvals', () => {
     expect(json.error.code).toBe('TOKEN_NOT_FOUND');
   });
 
-  it('POST /v1/approve/:token/decision APPROVED creates a sweepable PENDING outbox', async () => {
+  it('POST /v1/approve/:token/decision APPROVED creates a sweepable PENDING outbox and dispatches immediately', async () => {
     const publicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const approvalId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     const attemptId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -79,12 +80,19 @@ describe('API Routes — Approvals', () => {
       },
       outboxCommand: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'outbox-after-approve' }),
+        create: vi.fn().mockResolvedValue({
+          id: 'outbox-after-approve',
+          availableAt: new Date(),
+          status: 'PENDING',
+        }),
         deleteMany: vi.fn(),
       },
     };
 
     vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+    const dispatch = vi
+      .spyOn(publicationRequested, 'maybeDispatchPublicationRequested')
+      .mockResolvedValue({ dispatched: true, reason: 'sent' });
 
     const res = await app.inject({
       method: 'POST',
@@ -118,6 +126,13 @@ describe('API Routes — Approvals', () => {
       })
     );
     expect(mockTx.outboxCommand.deleteMany).not.toHaveBeenCalled();
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outboxCommandId: 'outbox-after-approve',
+        status: 'PENDING',
+        created: true,
+      })
+    );
   });
 
   it('POST /v1/approve/:token/decision APPROVED for a scheduled post sets availableAt to scheduledAt', async () => {
@@ -156,12 +171,19 @@ describe('API Routes — Approvals', () => {
       },
       outboxCommand: {
         findFirst: vi.fn().mockResolvedValue(null),
-        create: vi.fn().mockResolvedValue({ id: 'outbox-sched' }),
+        create: vi.fn().mockResolvedValue({
+          id: 'outbox-sched',
+          availableAt: scheduledAt,
+          status: 'PENDING',
+        }),
         deleteMany: vi.fn(),
       },
     };
 
     vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+    const dispatch = vi
+      .spyOn(publicationRequested, 'maybeDispatchPublicationRequested')
+      .mockResolvedValue({ dispatched: false, reason: 'available-in-future' });
 
     const res = await app.inject({
       method: 'POST',
@@ -176,6 +198,13 @@ describe('API Routes — Approvals', () => {
           status: 'PENDING',
           availableAt: scheduledAt,
         }),
+      })
+    );
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outboxCommandId: 'outbox-sched',
+        availableAt: scheduledAt,
+        status: 'PENDING',
       })
     );
   });

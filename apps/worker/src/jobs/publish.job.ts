@@ -1,12 +1,19 @@
 import { prisma } from 'scriora-core';
-import { PlatformError, platformRegistry, type SocialPlatformType } from 'scriora-social';
+import { platformRegistry, type SocialPlatformType } from 'scriora-social';
 import { inngest } from '../inngest/client.js';
 import {
   failClaimedOutbox,
   prepareOutboxDispatch,
   recordPublishSuccessSafely,
+  recordUnknownExternalState,
 } from '../lib/outbox-safety.js';
 import { abortPublishIfBlocked } from '../lib/publication-dispatch-guard.js';
+import {
+  dispatchToPlatformOnce,
+  PUBLISH_JOB_OPTIONS,
+  shouldScheduleVerify,
+  stepOutputContainsPlaintextSecret,
+} from '../lib/publish-mutation-policy.js';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
 let envelopeServiceInstance: SecretEnvelopeService | null = null;
@@ -19,9 +26,9 @@ function getEnvelopeService(): SecretEnvelopeService {
 
 export const publishJob = inngest.createFunction(
   {
-    id: 'publish-social-post',
-    name: 'Publish Social Post via Transactional Outbox',
-    retries: 3,
+    id: PUBLISH_JOB_OPTIONS.id,
+    name: PUBLISH_JOB_OPTIONS.name,
+    retries: PUBLISH_JOB_OPTIONS.retries,
     triggers: [{ event: 'scriora/publication.requested' }],
   },
   async ({ event, step }) => {
@@ -138,37 +145,32 @@ export const publishJob = inngest.createFunction(
       return { status: 'FAILED_PERMANENT', reason: 'Missing credentials' };
     }
 
-    // 2. Decrypt OAuth access token directly from fetched envelope (no redundant DB query)
-    const decrypted = await step.run('decrypt-credentials', async () => {
-      return getEnvelopeService().decrypt(envelope.envelopeData);
-    });
-
-    // 3. Dispatch to Social Adapter
+    // Decrypt inside the mutation step so plaintext tokens are never checkpointed.
     const publishResult = await step.run('dispatch-to-platform', async () => {
-      const latestPublication = await prisma.publication.findUnique({
-        where: { id: pub.id },
-        select: { status: true },
-      });
-      const blocked = abortPublishIfBlocked(latestPublication?.status);
-      if (blocked) {
-        return { kind: 'aborted' as const, reason: blocked.reason };
-      }
-
-      const adapter = platformRegistry.get(account.platform as unknown as SocialPlatformType);
-      if (!adapter) {
-        throw new Error(`No adapter registered for platform: ${account.platform}`);
-      }
-
       const payload = outboxRecord.payload as Record<string, unknown>;
+      const optionsObj =
+        payload.options && typeof payload.options === 'object'
+          ? (((payload.options as Record<string, unknown>).options as Record<string, unknown>) ??
+            payload.options)
+          : {};
 
-      try {
-        const optionsObj =
-          payload.options && typeof payload.options === 'object'
-            ? (((payload.options as Record<string, unknown>).options as Record<string, unknown>) ??
-              payload.options)
-            : {};
-
-        const result = await adapter.publish({
+      const result = await dispatchToPlatformOnce({
+        isBlocked: async () => {
+          const latestPublication = await prisma.publication.findUnique({
+            where: { id: pub.id },
+            select: { status: true },
+          });
+          const blocked = abortPublishIfBlocked(latestPublication?.status);
+          return blocked ? { reason: blocked.reason } : null;
+        },
+        getAdapter: () => {
+          if (!platformRegistry.has(account.platform as unknown as SocialPlatformType)) {
+            return null;
+          }
+          return platformRegistry.get(account.platform as unknown as SocialPlatformType);
+        },
+        decryptCredentials: () => getEnvelopeService().decrypt(envelope.envelopeData),
+        buildPublishRequest: (accessToken) => ({
           workspaceId: pub.workspaceId,
           accountId: account.externalAccountId,
           text: (payload.body as string) || pub.contentVariant.body || '',
@@ -176,7 +178,7 @@ export const publishJob = inngest.createFunction(
           idempotencyKey: outboxRecord.id,
           fingerprint: pub.fingerprint,
           metadata: {
-            accessToken: decrypted.accessToken,
+            accessToken,
             authorUrn: account.externalAccountId
               ? `urn:li:person:${account.externalAccountId}`
               : undefined,
@@ -185,27 +187,36 @@ export const publishJob = inngest.createFunction(
             options: payload.options,
             ...(typeof optionsObj === 'object' && optionsObj !== null ? optionsObj : {}),
           },
-        });
+        }),
+      });
 
-        return { kind: 'success' as const, result };
-      } catch (err: unknown) {
-        if (err instanceof PlatformError) {
+      if (stepOutputContainsPlaintextSecret(result)) {
+        if (result.kind === 'success') {
           return {
-            kind: 'failure' as const,
-            code: err.code,
-            message: err.message,
-            retryable: err.retryable,
-            retryAfterMs: err.retryAfterMs,
+            kind: 'success' as const,
+            externalPostId: result.externalPostId,
+            externalPostUrl: result.externalPostUrl ?? null,
           };
         }
-
-        return {
-          kind: 'failure' as const,
-          code: 'UNEXPECTED_FAILURE',
-          message: err instanceof Error ? err.message : String(err),
-          retryable: false,
-        };
+        if (result.kind === 'unknown_external_state') {
+          return {
+            kind: 'unknown_external_state' as const,
+            reason: result.reason,
+            externalPostId: null,
+            externalPostUrl: result.externalPostUrl ?? null,
+          };
+        }
+        if (result.kind === 'failure') {
+          return {
+            kind: 'failure' as const,
+            code: result.code,
+            message: result.message,
+            retryable: result.retryable,
+          };
+        }
+        return { kind: 'aborted' as const, reason: result.reason };
       }
+      return result;
     });
 
     if (publishResult.kind === 'aborted') {
@@ -218,16 +229,34 @@ export const publishJob = inngest.createFunction(
       return { status: 'ABORTED', reason: publishResult.reason };
     }
 
-    // 4. Record result in Database
-    if (publishResult.kind === 'success' && publishResult.result) {
-      const { externalPostId, externalPostUrl } = publishResult.result;
+    if (publishResult.kind === 'unknown_external_state') {
+      const recorded = await step.run('record-unknown-external-state', async () => {
+        return recordUnknownExternalState(prisma, {
+          publicationId: pub.id,
+          outboxCommandId,
+          publishAttemptId: outboxRecord.publishAttemptId,
+          externalPostId: publishResult.externalPostId,
+          externalPostUrl: publishResult.externalPostUrl ?? null,
+          reason: publishResult.reason,
+        });
+      });
+
+      return {
+        status: 'UNKNOWN_EXTERNAL_STATE',
+        reason: publishResult.reason,
+        recorded: recorded.outcome,
+      };
+    }
+
+    if (publishResult.kind === 'success') {
+      const { externalPostId, externalPostUrl } = publishResult;
 
       const recorded = await step.run('record-success', async () => {
         return recordPublishSuccessSafely(prisma, {
           publicationId: pub.id,
           outboxCommandId,
           publishAttemptId: outboxRecord.publishAttemptId,
-          externalPostId: externalPostId ?? null,
+          externalPostId,
           externalPostUrl: externalPostUrl ?? null,
         });
       });
@@ -243,8 +272,7 @@ export const publishJob = inngest.createFunction(
         return { status: 'NOOP', reason: 'Publication already PUBLISHED' };
       }
 
-      // 5. Trigger post verification after 60 seconds (§3.1 Intent != Result)
-      if (externalPostId) {
+      if (shouldScheduleVerify(externalPostId)) {
         await step.sleep('wait-for-platform-ingest', '60s');
         await step.sendEvent('trigger-verification', {
           name: 'scriora/publication.verify',
@@ -257,49 +285,44 @@ export const publishJob = inngest.createFunction(
       }
 
       return { status: 'PUBLISHED', externalPostId, externalPostUrl };
-    } else {
-      // Handle failure
-      const errorData = publishResult as {
-        kind: 'failure';
-        code: string;
-        message: string;
-        retryable: boolean;
-      };
-      const isRetryable = errorData.retryable;
-
-      await step.run('record-failure', async () => {
-        await prisma.$transaction([
-          prisma.publishAttempt.update({
-            where: { id: outboxRecord.publishAttemptId },
-            data: {
-              status: isRetryable ? 'RESERVED' : 'FAILED_PERMANENT',
-              errorCode: errorData.code,
-              errorMessage: errorData.message,
-              retryable: isRetryable,
-              completedAt: new Date(),
-            },
-          }),
-          prisma.publication.update({
-            where: { id: pub.id },
-            data: {
-              status: isRetryable ? 'READY' : 'FAILED',
-            },
-          }),
-          prisma.outboxCommand.update({
-            where: { id: outboxCommandId },
-            data: {
-              status: isRetryable ? 'PENDING' : 'FAILED',
-              lastError: { code: errorData.code, message: errorData.message },
-            },
-          }),
-        ]);
-      });
-
-      if (isRetryable) {
-        throw new Error(`Retryable platform error (${errorData.code}): ${errorData.message}`);
-      }
-
-      return { status: 'FAILED_PERMANENT', error: errorData };
     }
+
+    const errorData = publishResult;
+    const isRetryable = errorData.retryable;
+
+    await step.run('record-failure', async () => {
+      await prisma.$transaction([
+        prisma.publishAttempt.update({
+          where: { id: outboxRecord.publishAttemptId },
+          data: {
+            status: isRetryable ? 'RESERVED' : 'FAILED_PERMANENT',
+            errorCode: errorData.code,
+            errorMessage: errorData.message,
+            retryable: isRetryable,
+            completedAt: new Date(),
+          },
+        }),
+        prisma.publication.update({
+          where: { id: pub.id },
+          data: {
+            status: isRetryable ? 'READY' : 'FAILED',
+          },
+        }),
+        prisma.outboxCommand.update({
+          where: { id: outboxCommandId },
+          data: {
+            status: isRetryable ? 'PENDING' : 'FAILED',
+            lastError: { code: errorData.code, message: errorData.message },
+          },
+        }),
+      ]);
+    });
+
+    // Retryable platform errors go back to PENDING for the outbox sweep.
+    // Do not throw — Inngest would replay dispatch-to-platform.
+    return {
+      status: isRetryable ? 'RETRYABLE' : 'FAILED_PERMANENT',
+      error: errorData,
+    };
   }
 );
