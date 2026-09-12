@@ -42,8 +42,8 @@
 |---|---|---|:---:|:---:|:---:|:---:|---|
 | 7 | **Telegram** | Bot API + C2 Webhook | **✅ Production Live** | ❌ No | ✅ Yes | ✅ Yes | Channels, Groups, C2 Admin Bot, §14 Approvals, Photos |
 | 8 | **Discord** | Webhook / Bot API v10 | **✅ Production Live** | ❌ No | ✅ Yes | ❌ No | Rich Embeds, Webhooks, Bot API, Forums, Color cards |
-| 9 | **Slack** | Webhook / Bot Token | **🚀 Phase 6.2 (Next)** | ❌ No | ✅ Yes | ❌ No | Block Kit JSON, Internal Announcements, Team Channels |
-| 10 | **Reddit** | OAuth 2.0 (Script App) | **⏳ Phase 7** | ❌ No | ✅ Yes | ✅ Yes | Subreddit distribution, Markdown posts, Link shares |
+| 9 | **Reddit** | OAuth 2.0 (Script App) | **⏳ Phase 7** | ❌ No | ✅ Yes | ✅ Yes | Subreddit distribution, Markdown posts, Link shares |
+| 10 | **Slack** | Webhook / Bot Token | **📋 Future / Planned** | ❌ No | ✅ Yes | ❌ No | Block Kit JSON, Internal Announcements, Team Channels |
 | 11 | **WhatsApp Channels** | Meta Cloud API | **⏳ Phase 8** | ❌ No | ❌ No | ✅ Yes | Verified Broadcast Channels, Media updates, Newsletters |
 
 ---
@@ -139,13 +139,13 @@ flowchart TD
 
     subgraph S6 [Sprint 6: Instant Channels]
         D[Discord ✅ Done]
-        SK[Slack 🚀 Next]
         X[X / Twitter 🚀 Ready]
     end
 
     subgraph S7 [Sprint 7: Community & Blogs]
         BS[Bluesky]
         RD[Reddit]
+        SK[Slack 📋 Future]
         MD[Medium / Dev.to]
         WP[WordPress]
     end

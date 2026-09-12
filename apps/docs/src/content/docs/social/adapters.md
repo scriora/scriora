@@ -14,8 +14,8 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 | **X (Twitter)** | OAuth 2.0 (PKCE) | Text, Images, Video, 280-char Threading | 🟢 Production Live |
 | **Telegram** | Bot API v7 | Channel broadcast, Photos, §14 Approvals | 🟢 Production Live |
 | **Discord** | Webhook & Bot API v10 | Rich Embeds, Collages, Threads, Reactions | 🟢 Production Live |
-| **Slack** | Webhook / Bot API | Block Kit, Announcements, Channel broadcasts | 🚀 Next (Phase 6.2) |
 | **Reddit** | OAuth 2.0 (Script App) | Subreddit text & link posts, Flairs | 📋 Roadmap (Phase 7) |
+| **Slack** | Webhook / Bot API | Block Kit, Announcements, Channel broadcasts | 📋 Future Roadmap |
 | **Facebook** | Meta Graph API | Pages, Groups, Feed Posts, Reels | ⏳ In Progress |
 | **Instagram** | Meta Graph API | Reels, Carousel, Single Image | ⏳ In Progress |
 | **Threads** | Meta Threads API | Text, Images, Carousel, Video | ⏳ In Progress |

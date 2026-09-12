@@ -12,11 +12,11 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 | **Telegram** | Bot API + C2 Webhook | Text (MarkdownV2), Photos, Channels, Groups, C2 Approval Bot | Production (Live) ✅ |
 | **X (Twitter)** | OAuth 2.0 (PKCE) / API v2 | Text, Threads, Images, Videos, Polls | Production (Adapter Ready) 🚀 |
 | **Discord** | Webhook / Bot API | Rich Embeds, Announcements, Channels | Tier 1 (Immediate) |
-| **Slack** | Incoming Webhook / Bot Token | Block Kit, Announcements, Team Channels | Tier 1 (Immediate) |
 | **Bluesky** | AT Protocol (App Passwords) | Text, Images, Facets | Tier 1 (Immediate) |
 | **Mastodon** | ActivityPub / REST Bearer | Statuses, Content Warnings, Media | Tier 1 (Immediate) |
 | **Medium / Dev.to** | Integration Tokens | Markdown Articles, Canonical URLs | Tier 1 (Immediate) |
 | **Reddit** | OAuth 2.0 (Script App) | Subreddit Posts, Links, Media | Tier 2 (Self-Serve) |
+| **Slack** | Incoming Webhook / Bot Token | Block Kit, Announcements, Team Channels | Tier 2 (Future Planned) |
 | **Threads** | Threads API (OAuth 2.0) | Text (500 chars), Images, Carousel, Video | Tier 2 (Self-Serve) |
 | **Google Business Profile** | Google OAuth 2.0 | Local Business Updates, Offers, Events, Photos | Tier 3 (Quotas) |
 | **Pinterest** | OAuth 2.0 (API v5) | Pins, Boards, Image/Video | Tier 3 (Quotas) |
