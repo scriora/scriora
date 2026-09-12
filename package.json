@@ -11,6 +11,7 @@
     "lint": "turbo run lint",
     "lint:fix": "biome check --write .",
     "db:generate": "pnpm --filter scriora-core db:generate",
+    "db:migrate:deploy": "pnpm --filter scriora-core db:migrate:deploy",
     "db:validate": "pnpm --filter scriora-core db:validate",
     "verify:architecture": "node tooling/architecture/verify-architecture.mjs",
     "clean": "turbo run clean"

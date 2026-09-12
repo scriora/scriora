@@ -34,11 +34,9 @@ pnpm install
 docker run --name scriora-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16-alpine
 docker run --name scriora-redis -p 6379:6379 -d redis:7-alpine
 
-# Generate Prisma Client
+# Generate Prisma Client and apply versioned migrations
 pnpm db:generate
-
-# Push schema to database
-pnpm --filter scriora-core exec prisma db push
+pnpm db:migrate:deploy
 ```
 
 ---
