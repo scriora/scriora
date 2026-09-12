@@ -208,14 +208,16 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
         where: { workspaceId: wsId },
       });
       if (publicationCount > 0) {
-        return reply.status(409).send(
-          err(
-            'WORKSPACE_HAS_PUBLICATIONS',
-            'BUSINESS_RULE_VIOLATION',
-            'Cannot delete a workspace that still has publications. Disconnect accounts and archive publications first.',
-            request.id
-          )
-        );
+        return reply
+          .status(409)
+          .send(
+            err(
+              'WORKSPACE_HAS_PUBLICATIONS',
+              'BUSINESS_RULE_VIOLATION',
+              'Cannot delete a workspace that still has publications. Disconnect accounts and archive publications first.',
+              request.id
+            )
+          );
       }
 
       await prisma.workspace.delete({ where: { id: wsId } });
