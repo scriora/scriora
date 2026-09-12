@@ -1,5 +1,5 @@
-import { prisma } from 'scriora-core';
 import * as scrioraCore from 'scriora-core';
+import { prisma } from 'scriora-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 
