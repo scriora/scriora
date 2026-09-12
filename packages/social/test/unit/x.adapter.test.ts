@@ -109,6 +109,36 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
         expect(threads[i]).toContain(`(${i + 1}/${threads.length})`);
       }
     });
+
+    it('splits a 10,000-character punctuation-free token into bounded chunks', () => {
+      const longToken = 'a'.repeat(10_000);
+
+      const threads = XAdapter.splitIntoThread(longToken, 200);
+      const bodies = threads.map((thread) => thread.replace(/\n\n\(\d+\/\d+\)$/, ''));
+
+      expect(threads.length).toBeGreaterThan(1);
+      expect(bodies.every((body) => body.length <= 200)).toBe(true);
+      expect(bodies.join('')).toBe(longToken);
+    });
+
+    it('preserves sentence order and punctuation while creating a thread', () => {
+      const text = [
+        'Alpha sentence ends here.',
+        'Beta sentence asks why?',
+        'Gamma sentence is excited!',
+        'Delta sentence carries the remaining details without losing its order.',
+        'Epsilon sentence adds enough deterministic content to exceed one normal post.',
+        'Zeta sentence closes the sequence and must remain in exactly this position.',
+      ].join(' ');
+
+      const threads = XAdapter.splitIntoThread(text, 55);
+      const reconstructed = threads
+        .map((thread) => thread.replace(/\n\n\(\d+\/\d+\)$/, ''))
+        .join(' ');
+
+      expect(threads.length).toBeGreaterThan(1);
+      expect(reconstructed).toBe(text);
+    });
   });
 
   describe('Publishing Tweets and Threads', () => {

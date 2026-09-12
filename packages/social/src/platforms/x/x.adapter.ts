@@ -49,6 +49,88 @@ export interface XMetadata {
   options?: XMetadata | { options?: XMetadata };
 }
 
+function splitParagraphs(text: string): string[] {
+  const paragraphs: string[] = [];
+  let lines: string[] = [];
+
+  const flush = () => {
+    const paragraph = lines.join('\n').trim();
+    if (paragraph) paragraphs.push(paragraph);
+    lines = [];
+  };
+
+  for (const line of text.split('\n')) {
+    if (line.trim().length === 0) {
+      flush();
+    } else {
+      lines.push(line);
+    }
+  }
+  flush();
+  return paragraphs;
+}
+
+function splitSentences(paragraph: string): string[] {
+  const sentences: string[] = [];
+  let start = 0;
+
+  for (let index = 0; index < paragraph.length; index += 1) {
+    const character = paragraph[index];
+    if (character !== '.' && character !== '!' && character !== '?') continue;
+
+    let end = index + 1;
+    while (end < paragraph.length) {
+      const next = paragraph[end];
+      if (next !== '.' && next !== '!' && next !== '?') break;
+      end += 1;
+    }
+
+    const sentence = paragraph.slice(start, end).trim();
+    if (sentence) sentences.push(sentence);
+    start = end;
+    index = end - 1;
+  }
+
+  const remainder = paragraph.slice(start).trim();
+  if (remainder) sentences.push(remainder);
+  return sentences;
+}
+
+function splitWords(text: string): string[] {
+  const words: string[] = [];
+  let start = -1;
+
+  for (let index = 0; index <= text.length; index += 1) {
+    const isBoundary = index === text.length || text[index]?.trim().length === 0;
+    if (!isBoundary && start === -1) start = index;
+    if (isBoundary && start !== -1) {
+      words.push(text.slice(start, index));
+      start = -1;
+    }
+  }
+  return words;
+}
+
+function splitOversizedWord(word: string, maxLen: number): string[] {
+  const pieces: string[] = [];
+  let characters: string[] = [];
+  let length = 0;
+
+  const flush = () => {
+    if (characters.length > 0) pieces.push(characters.join(''));
+    characters = [];
+    length = 0;
+  };
+
+  for (const character of word) {
+    if (length + character.length > maxLen) flush();
+    characters.push(character);
+    length += character.length;
+  }
+  flush();
+  return pieces;
+}
+
 export class XAdapter implements PlatformAdapter {
   public readonly platform: SocialPlatformType = 'X';
   private readonly oauth: XOAuth;
@@ -91,61 +173,79 @@ export class XAdapter implements PlatformAdapter {
    * respecting sentence and paragraph boundaries and appending (i/n) indices.
    */
   public static splitIntoThread(text: string, maxLen = 275): string[] {
+    if (!Number.isInteger(maxLen) || maxLen < 1) {
+      throw new RangeError('maxLen must be a positive integer');
+    }
+
     const trimmed = text.trim();
     if (trimmed.length <= 280) {
       return [trimmed];
     }
 
-    const paragraphs = trimmed.split(/\n\s*\n/);
+    const paragraphs = splitParagraphs(trimmed);
     const chunks: string[] = [];
     let currentChunk = '';
+
+    const flushChunk = () => {
+      if (currentChunk) chunks.push(currentChunk);
+      currentChunk = '';
+    };
+
+    const appendWords = (value: string) => {
+      for (const word of splitWords(value)) {
+        if (word.length > maxLen) {
+          flushChunk();
+          const pieces = splitOversizedWord(word, maxLen);
+          for (const piece of pieces) {
+            if (piece.length === maxLen) {
+              chunks.push(piece);
+            } else {
+              currentChunk = piece;
+            }
+          }
+          continue;
+        }
+
+        const candidate = currentChunk ? `${currentChunk} ${word}` : word;
+        if (candidate.length <= maxLen) {
+          currentChunk = candidate;
+        } else {
+          flushChunk();
+          currentChunk = word;
+        }
+      }
+    };
+
+    const appendSentence = (sentence: string) => {
+      const candidate = currentChunk ? `${currentChunk} ${sentence}` : sentence;
+      if (candidate.length <= maxLen) {
+        currentChunk = candidate;
+        return;
+      }
+
+      flushChunk();
+      if (sentence.length <= maxLen) {
+        currentChunk = sentence;
+      } else {
+        appendWords(sentence);
+      }
+    };
 
     for (const para of paragraphs) {
       if (`${currentChunk}\n\n${para}`.trim().length <= maxLen) {
         currentChunk = currentChunk ? `${currentChunk}\n\n${para}` : para;
       } else {
-        // Paragraph too large for current chunk, split sentences if needed
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = '';
-        }
+        flushChunk();
 
         if (para.length <= maxLen) {
           currentChunk = para;
         } else {
-          // Break paragraph by sentences
-          const sentences = para.match(/[^.!?]+[.!?]+|\S+/g) || [para];
-          for (const sentence of sentences) {
-            if (`${currentChunk} ${sentence}`.trim().length <= maxLen) {
-              currentChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
-            } else {
-              if (currentChunk) {
-                chunks.push(currentChunk.trim());
-              }
-              // If single sentence exceeds maxLen, split by words
-              if (sentence.length > maxLen) {
-                const words = sentence.split(/\s+/);
-                currentChunk = '';
-                for (const word of words) {
-                  if (`${currentChunk} ${word}`.trim().length <= maxLen) {
-                    currentChunk = currentChunk ? `${currentChunk} ${word}` : word;
-                  } else {
-                    if (currentChunk) chunks.push(currentChunk.trim());
-                    currentChunk = word;
-                  }
-                }
-              } else {
-                currentChunk = sentence;
-              }
-            }
-          }
+          for (const sentence of splitSentences(para)) appendSentence(sentence);
         }
       }
     }
 
-    if (currentChunk.trim()) {
-      chunks.push(currentChunk.trim());
-    }
+    flushChunk();
 
     // Append thread numbering (1/N)
     const total = chunks.length;
