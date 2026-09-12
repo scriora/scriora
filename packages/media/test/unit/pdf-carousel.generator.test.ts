@@ -141,4 +141,33 @@ describe('PdfCarouselGenerator', () => {
     const corruptBuffer = Buffer.from('NOT_AN_IMAGE_DATA_AT_ALL');
     await expect(generator.generateFromImages([corruptBuffer])).rejects.toThrow(PdfCarouselError);
   });
+
+  it('rejects file://, local paths, and private media URLs', async () => {
+    await expect(generator.generateFromImages(['file:///etc/passwd'])).rejects.toMatchObject({
+      name: 'PdfCarouselError',
+      code: 'UNSAFE_REMOTE_URL',
+    });
+    await expect(generator.generateFromImages(['/etc/passwd'])).rejects.toMatchObject({
+      name: 'PdfCarouselError',
+      code: 'UNSAFE_REMOTE_URL',
+    });
+    await expect(
+      generator.generateFromImages(['http://cdn.example.com/slide.png'])
+    ).rejects.toMatchObject({
+      name: 'PdfCarouselError',
+      code: 'UNSAFE_REMOTE_URL',
+    });
+    await expect(
+      generator.generateFromImages(['https://169.254.169.254/latest/meta-data'])
+    ).rejects.toMatchObject({
+      name: 'PdfCarouselError',
+      code: 'UNSAFE_REMOTE_URL',
+    });
+    await expect(
+      generator.generateFromImages(['https://127.0.0.1/secrets.png'])
+    ).rejects.toMatchObject({
+      name: 'PdfCarouselError',
+      code: 'UNSAFE_REMOTE_URL',
+    });
+  });
 });

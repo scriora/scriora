@@ -71,7 +71,7 @@ export class FacebookAdapter implements PlatformAdapter {
    */
   public async publish(request: PublishRequest): Promise<PublishResult> {
     const accessToken = (request.metadata?.accessToken as string) || '';
-    const targetId = (request.metadata?.pageId as string) || request.accountId;
+    const targetId = this.resolveBoundPageId(request);
 
     if (!accessToken) {
       throw new PlatformError({
@@ -373,6 +373,36 @@ export class FacebookAdapter implements PlatformAdapter {
         });
       }
     }
+  }
+
+  /**
+   * Publish destination is the connected account's stored page identity.
+   * A client-supplied pageId is accepted only when it exactly matches that identity.
+   */
+  private resolveBoundPageId(request: PublishRequest): string {
+    const storedPageId = typeof request.accountId === 'string' ? request.accountId.trim() : '';
+    const requestedPageId =
+      typeof request.metadata?.pageId === 'string' ? request.metadata.pageId.trim() : '';
+
+    if (!storedPageId) {
+      throw new PlatformError({
+        code: 'MISSING_ACCOUNT_ID',
+        category: 'VALIDATION',
+        message: 'Facebook Page ID or Account ID is required',
+        retryable: false,
+      });
+    }
+
+    if (requestedPageId && requestedPageId !== storedPageId) {
+      throw new PlatformError({
+        code: 'PAGE_ID_MISMATCH',
+        category: 'AUTHORIZATION',
+        message: 'Facebook pageId must match the connected account page identity',
+        retryable: false,
+      });
+    }
+
+    return storedPageId;
   }
 
   private isVideoUrl(url: string, explicitMediaType?: string): boolean {

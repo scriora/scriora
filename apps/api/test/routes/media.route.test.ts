@@ -174,4 +174,53 @@ describe('API Routes — Media & Carousel Generator', () => {
     expect(res.headers['content-disposition']).toContain('attachment');
     expect(res.rawPayload.subarray(0, 5).toString('ascii')).toBe('%PDF-');
   });
+
+  it('POST /v1/media/carousel rejects file:// and private slide URLs', async () => {
+    const { prisma } = await import('scriora-core');
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: '22222222-2222-4222-8222-222222222222',
+      userId: 'user-123',
+      workspaceRole: 'EDITOR',
+      joinedAt: new Date(),
+      workspace: {
+        id: '22222222-2222-4222-8222-222222222222',
+        name: 'Test Workspace',
+        slug: 'test-ws',
+      },
+    } as any);
+
+    const token = app.jwt.sign({
+      sub: 'user-123',
+      workspaceId: '22222222-2222-4222-8222-222222222222',
+      role: 'EDITOR',
+    });
+
+    const fileRes = await app.inject({
+      method: 'POST',
+      url: '/v1/media/carousel',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      payload: {
+        slides: ['file:///etc/passwd'],
+      },
+    });
+    expect(fileRes.statusCode).toBe(400);
+    expect(JSON.parse(fileRes.body).error.code).toBe('UNSAFE_REMOTE_URL');
+
+    const privateRes = await app.inject({
+      method: 'POST',
+      url: '/v1/media/carousel',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      payload: {
+        slides: ['https://169.254.169.254/latest/meta-data'],
+      },
+    });
+    expect(privateRes.statusCode).toBe(400);
+    expect(JSON.parse(privateRes.body).error.code).toBe('UNSAFE_REMOTE_URL');
+  });
 });

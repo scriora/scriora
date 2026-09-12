@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "scriora-core": "workspace:*",
     "@atproto/api": "^0.20.44",
     "axios": "^1.20.0",
     "node-telegram-bot-api": "^2.1.0",
