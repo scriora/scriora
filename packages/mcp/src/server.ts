@@ -4,6 +4,9 @@
 // INVARIANT: This server CANNOT bypass the Human Approval Gate.
 //            Every action that requires approval must go through
 //            the approval flow — never directly to execution.
+// AUTH: stdio-trusted process. There is no per-request API key / HMAC check.
+//       scriora_create_post validates that workspaceId exists and honors
+//       workspace.requiresApproval via createUnifiedPost (same as POST /v1/posts).
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -15,6 +18,12 @@ import {
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
+import {
+  CREATE_POST_TOOL_DESCRIPTION,
+  CreatePostToolInputSchema,
+  executeCreatePost,
+  formatCreatePostToolResponse,
+} from './tools/create-post.js';
 
 const server = new McpServer({
   name: 'scriora-mcp',
@@ -152,9 +161,11 @@ server.tool(
 );
 
 // ── Tool 4: scriora_create_post ──────────────────────────────────────────────
+// Stdio-trusted: no API-key gate. Workspace must exist; requiresApproval is honored
+// via createUnifiedPost (same path as POST /v1/posts).
 server.tool(
   'scriora_create_post',
-  'Creates and stages a social media post across one or multiple platforms (e.g. Facebook Pages, Threads, Instagram). Enforces Human Approval Gate where required.',
+  CREATE_POST_TOOL_DESCRIPTION,
   {
     workspaceId: z.string().uuid().describe('Target workspace UUID'),
     body: z.string().min(1).describe('Post caption or textual update'),
@@ -168,7 +179,7 @@ server.tool(
             .object({
               pageId: z.string().optional(),
               link: z.string().url().optional(),
-              published: z.boolean().optional().describe('False creates an unpublished draft'),
+              published: z.boolean().optional().describe('False creates an unpublished Page draft'),
               videoThumbnailUrl: z
                 .string()
                 .url()
@@ -207,35 +218,19 @@ server.tool(
     mediaUrls: z.array(z.string().url()).optional().describe('Attached images or videos'),
     scheduledAt: z.string().datetime().optional().describe('Optional ISO timestamp for scheduling'),
   },
-  async ({ workspaceId, body, targets, mediaUrls, scheduledAt }) => {
-    const contentItem = await prisma.content.create({
-      data: {
-        workspaceId,
-        title: body.slice(0, 60),
-        body,
-        status: 'DRAFT',
-      },
-    });
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            {
-              message: 'Content successfully created and staged in Scriora workspace',
-              contentId: contentItem.id,
-              targetsCount: targets.length,
-              mediaUrls: mediaUrls || [],
-              scheduledAt: scheduledAt || 'IMMEDIATE',
-              status: 'STAGED',
-            },
-            null,
-            2
-          ),
+  async (args) => {
+    const parsed = CreatePostToolInputSchema.safeParse(args);
+    if (!parsed.success) {
+      return formatCreatePostToolResponse({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues.map((i) => i.message).join('; '),
         },
-      ],
-    };
+      });
+    }
+    const result = await executeCreatePost(parsed.data);
+    return formatCreatePostToolResponse(result);
   }
 );
 

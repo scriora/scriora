@@ -345,6 +345,9 @@ importers:
       scriora-core:
         specifier: workspace:*
         version: link:../core
+      scriora-social:
+        specifier: workspace:*
+        version: link:../social
       zod:
         specifier: ^4.6.2
         version: 4.6.2
