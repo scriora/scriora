@@ -95,17 +95,29 @@ X-Workspace-Id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 - **Threading Engine**: Auto-splits posts exceeding 280 characters with linked parent/reply IDs
 - **Accessibility**: Enforces `altText` for WCAG AA compliance
 
+### Instagram Suite
+- **Modes**: Instagram Login for Business via Meta Graph API v21 (`GET /v1/connect/instagram`)
+- **Formats**: Single Image, Reels (`shareToFeed`, `coverUrl`, `audioName`), Stories, and Carousels (up to 10 items)
+- **Security**: Automated webhook callbacks for deauthorization and GDPR data deletion
+
+### Threads Suite
+- **Modes**: Threads Graph API v1.0 (`GET /v1/connect/threads`)
+- **Features**: Text (500 chars), Single Media, Multi-Image Carousels (2-10 items), Chained Replies (`threadItems`)
+- **Governance**: Reply Controls (`replyControl: 'everyone' | 'accounts_you_follow' | 'mentioned_only'`), Per-Slide `altText`
+- **Strict Guardrails**: No mixed media (no images + videos), maximum 1 video per post (max 5 min / 1GB)
+
 ---
 
 ## 📊 Comparison Matrix
 
-| Platform | Max Text | Max Images | Carousel / Album | Threads | Auto-Reactions | Pinning |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Discord** | 2,000 | 10 (4 collage) | ✅ | ✅ | ✅ | ✅ |
-| **Telegram** | 4,096 | 10 | ✅ | ❌ | ❌ | ✅ |
-| **LinkedIn** | 3,000 | 9 (or PDF) | ✅ (PDF) | ❌ | ❌ | ❌ |
-| **X (Twitter)**| 280 | 4 | ❌ | ✅ (Auto) | ❌ | ❌ |
-| **Instagram** | 2,200 | 10 | ✅ | ❌ | ❌ | ❌ |
-| **TikTok** | 2,200 | 35 | ✅ | ❌ | ❌ | ❌ |
-| **Facebook** | 63,206 | 10 | ✅ | ❌ | ❌ | ❌ |
-| **Reddit** *(Roadmap)* | 40,000 | 1 (or Link) | ❌ | ❌ | ❌ | ❌ |
+| Platform | Max Text | Max Images | Carousel / Album | Threads | Auto-Reactions | Pinning | Reply Controls |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Discord** | 2,000 | 10 (4 collage) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Telegram** | 4,096 | 10 | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **LinkedIn** | 3,000 | 9 (or PDF) | ✅ (PDF) | ❌ | ❌ | ❌ | ❌ |
+| **X (Twitter)**| 280 | 4 | ❌ | ✅ (Auto) | ❌ | ❌ | ❌ |
+| **Instagram** | 2,200 | 10 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Threads** | 500 | 10 | ✅ | ✅ (Chained) | ❌ | ❌ | ✅ |
+| **TikTok** | 2,200 | 35 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Facebook** | 63,206 | 10 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Reddit** *(Roadmap)* | 40,000 | 1 (or Link) | ❌ | ❌ | ❌ | ❌ | ❌ |

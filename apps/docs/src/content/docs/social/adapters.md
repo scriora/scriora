@@ -14,11 +14,11 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 | **X (Twitter)** | OAuth 2.0 (PKCE) | Text, Images, Video, 280-char Threading | 🟢 Production Live |
 | **Telegram** | Bot API v7 | Channel broadcast, Photos, §14 Approvals | 🟢 Production Live |
 | **Discord** | Webhook & Bot API v10 | Rich Embeds, Collages, Threads, Reactions | 🟢 Production Live |
+| **Instagram** | Meta Instagram Graph API v21 | Single Image, Reels, Carousel, Stories | 🟢 Production Live |
+| **Threads** | Meta Threads Graph API v1.0 | Text (500), Images, Carousel, Video, Chained | 🟢 Production Live |
 | **Reddit** | OAuth 2.0 (Script App) | Subreddit text & link posts, Flairs | 📋 Roadmap (Phase 7) |
 | **Slack** | Webhook / Bot API | Block Kit, Announcements, Channel broadcasts | 📋 Future Roadmap |
 | **Facebook** | Meta Graph API | Pages, Groups, Feed Posts, Reels | ⏳ In Progress |
-| **Instagram** | Meta Graph API | Reels, Carousel, Single Image | ⏳ In Progress |
-| **Threads** | Meta Threads API | Text, Images, Carousel, Video | ⏳ In Progress |
 | **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video, Community | ⏳ Roadmap (Phase 8) |
 | **TikTok** | Content Posting API | Short-form Video, Direct Share | ⏳ Roadmap (Phase 8) |
 | **Bluesky** | AT Protocol | Text, Images, Facets | ⏳ Roadmap |
