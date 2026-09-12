@@ -10,7 +10,7 @@
  * to the HMAC form after a successful match.
  */
 
-import crypto from 'node:crypto';
+import { hmacSha256Hex, sha256Hex } from './hmac-sha256.js';
 
 const DEFAULT_API_KEY_PEPPER = 'scriora-api-key-v1';
 
@@ -22,17 +22,12 @@ export function resolveApiKeyPepper(env: NodeJS.ProcessEnv = process.env): strin
 
 /** Canonical stored fingerprint for newly issued API keys. */
 export function hashApiKey(rawApiKey: string, env: NodeJS.ProcessEnv = process.env): string {
-  const pepper = resolveApiKeyPepper(env);
-  const hmac = crypto.createHmac('sha256', pepper);
-  // codeql[js/insufficient-password-hash] API keys are high-entropy random secrets fingerprinted with HMAC-SHA256 plus a server pepper for O(1) lookup. User passwords stay Argon2id.
-  return hmac.update(rawApiKey).digest('hex'); // lgtm[js/insufficient-password-hash]
+  return hmacSha256Hex(resolveApiKeyPepper(env), rawApiKey);
 }
 
 /** Pre-HMAC fingerprint for existing `ApiKey.keyHash` rows (not user passwords). */
 export function legacySha256ApiKeyFingerprint(rawApiKey: string): string {
-  const digest = crypto.createHash('sha256');
-  // codeql[js/insufficient-password-hash] Legacy API-key lookup digest only, not a password hash. New keys use HMAC-SHA256. User passwords stay Argon2id.
-  return digest.update(rawApiKey).digest('hex'); // lgtm[js/insufficient-password-hash]
+  return sha256Hex(rawApiKey);
 }
 
 /** HMAC fingerprint first, then the legacy SHA-256 digest if it differs. */
