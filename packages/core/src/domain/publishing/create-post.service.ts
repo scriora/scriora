@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { PrismaClient } from '../../db/client.js';
 import type { MediaRef, PublishTarget } from '../../schemas/publish.schema.js';
+import { assertSafePersistedRemoteUrls } from '../../security/persisted-remote-urls.js';
 import { publicationIdempotencyKeys } from './idempotency.js';
 
 const APPROVAL_RAW_TOKEN_BYTES = 16;
@@ -21,9 +22,9 @@ const APPROVAL_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export class CreatePostError extends Error {
-  readonly code: 'SOCIAL_ACCOUNT_NOT_FOUND';
+  readonly code: 'SOCIAL_ACCOUNT_NOT_FOUND' | 'UNSAFE_REMOTE_URL';
 
-  constructor(code: 'SOCIAL_ACCOUNT_NOT_FOUND', message: string) {
+  constructor(code: 'SOCIAL_ACCOUNT_NOT_FOUND' | 'UNSAFE_REMOTE_URL', message: string) {
     super(message);
     this.name = 'CreatePostError';
     this.code = code;
@@ -224,6 +225,16 @@ export async function createUnifiedPost(
     if (resolvedMediaUrls.length === 0) {
       resolvedMediaUrls = assetIds;
     }
+  }
+
+  try {
+    assertSafePersistedRemoteUrls({
+      mediaUrls: resolvedMediaUrls,
+      platformOptions: targets.map((target) => target.platformOptions ?? {}),
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unsafe remote URL';
+    throw new CreatePostError('UNSAFE_REMOTE_URL', message);
   }
 
   const result = await db.$transaction(async (tx: Prisma.TransactionClient) => {

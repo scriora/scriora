@@ -23,6 +23,21 @@ describe('social-publish-outbox helpers', () => {
     expect(platformOptionsFromVariantMetadata(undefined)).toEqual({});
   });
 
+  it('refuses to enqueue unsafe media URLs', () => {
+    expect(() =>
+      buildSocialPublishOutboxPayload({
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        body: 'nope',
+        platform: 'LINKEDIN',
+        socialAccountId: '22222222-2222-4222-8222-222222222222',
+        mediaUrls: ['http://169.254.169.254/latest/meta-data'],
+        idempotencyKey: 'key',
+        fingerprint: 'f'.repeat(64),
+        options: {},
+      })
+    ).toThrow(/https|blocked|not allowed|permitted/i);
+  });
+
   it('reuses an existing PENDING outbox instead of creating a second command', async () => {
     const tx = {
       outboxCommand: {

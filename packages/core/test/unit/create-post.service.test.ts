@@ -215,6 +215,52 @@ describe('createUnifiedPost', () => {
 
     expect(db.$transaction).not.toHaveBeenCalled();
   });
+
+  it('rejects SSRF media URLs before persisting publications', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId }]);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        createdByUserId: userId,
+        requiresApproval: false,
+        body: 'Blocked media',
+        targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+        mediaUrls: ['http://127.0.0.1/latest/meta-data'],
+        idempotencyKey: '99999999-9999-4999-8999-999999999999',
+      })
+    ).rejects.toMatchObject({ code: 'UNSAFE_REMOTE_URL' });
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe platform option URLs', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId }]);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        createdByUserId: userId,
+        requiresApproval: false,
+        body: 'Blocked thumbnail',
+        targets: [
+          {
+            socialAccountId: accountId,
+            platform: 'YOUTUBE',
+            platformOptions: {
+              platform: 'YOUTUBE',
+              options: { thumbnailUrl: 'file:///etc/passwd' },
+            },
+          },
+        ],
+        idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      })
+    ).rejects.toMatchObject({ code: 'UNSAFE_REMOTE_URL' });
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe('createPost response helpers', () => {

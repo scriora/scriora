@@ -103,6 +103,11 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           .status(404)
           .send(err('SOCIAL_ACCOUNT_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
       }
+      if (error instanceof CreatePostError && error.code === 'UNSAFE_REMOTE_URL') {
+        return reply
+          .status(400)
+          .send(err('UNSAFE_REMOTE_URL', 'VALIDATION_ERROR', error.message, request.id));
+      }
       throw error;
     }
 
