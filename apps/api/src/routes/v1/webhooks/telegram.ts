@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from 'scriora-core';
 import { TelegramBotService, type TelegramDbContext, type TelegramUpdate } from 'scriora-social';
 import { err } from '../../../lib/response.js';
@@ -7,14 +7,33 @@ import {
   handleTelegramC2ApprovalDecision,
   resolveTelegramC2Workspace,
 } from '../../../lib/telegram-c2-create-post.js';
+import {
+  readTelegramWebhookSecret,
+  TELEGRAM_WEBHOOK_SECRET_HEADER,
+  telegramWebhookSecretMatches,
+} from '../../../lib/telegram-webhook-auth.js';
+
+function rejectTelegramWebhook(request: FastifyRequest, reply: FastifyReply) {
+  return reply
+    .status(401)
+    .send(err('INVALID_WEBHOOK_SECRET', 'AUTHENTICATION_ERROR', 'Unauthorized', request.id));
+}
 
 export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
-  const botToken = process.env.TELEGRAM_BOT_TOKEN ?? '';
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? '';
   const adminChatId = process.env.TELEGRAM_ADMIN_CHAT_ID?.trim();
-  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+  const webhookSecret = readTelegramWebhookSecret();
 
   if (!botToken) {
-    fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured in environment variables.');
+    fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured; Telegram webhook is not registered.');
+    return;
+  }
+
+  if (!webhookSecret) {
+    fastify.log.warn(
+      'TELEGRAM_WEBHOOK_SECRET is unset; Telegram webhook POST is rejected (fail-closed).'
+    );
+    fastify.post('/', async (request, reply) => rejectTelegramWebhook(request, reply));
     return;
   }
 
@@ -78,20 +97,13 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
   };
 
   fastify.post('/', async (request, reply) => {
-    // 1. Verify Webhook Secret if configured
-    if (webhookSecret) {
-      const headerSecret = request.headers['x-telegram-bot-api-secret-token'];
-      if (headerSecret !== webhookSecret) {
-        return reply
-          .status(401)
-          .send(err('INVALID_WEBHOOK_SECRET', 'AUTHENTICATION_ERROR', 'Unauthorized', request.id));
-      }
+    const headerSecret = request.headers[TELEGRAM_WEBHOOK_SECRET_HEADER];
+    if (!telegramWebhookSecretMatches(headerSecret, webhookSecret)) {
+      return rejectTelegramWebhook(request, reply);
     }
 
-    // 2. Pass update to TelegramBotService
     const update = request.body as TelegramUpdate;
     if (update) {
-      // Fire-and-forget or await handling
       await botService.handleUpdate(update, dbContext);
     }
 
