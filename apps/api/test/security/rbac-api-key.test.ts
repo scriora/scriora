@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { prisma } from 'scriora-core';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 
 const workspaceA = '11111111-1111-4111-8111-111111111111';
@@ -42,6 +42,10 @@ function memberRecord(
 
 describe('Security — RBAC, API key binding, OWNER protection', () => {
   const app = buildApp();
+
+  beforeAll(async () => {
+    await app.ready();
+  });
 
   beforeEach(() => {
     vi.restoreAllMocks();
