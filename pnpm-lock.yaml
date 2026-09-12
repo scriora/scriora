@@ -56,6 +56,9 @@ importers:
       scriora-core:
         specifier: workspace:*
         version: link:../../packages/core
+      scriora-media:
+        specifier: workspace:*
+        version: link:../../packages/media
       scriora-social:
         specifier: workspace:*
         version: link:../../packages/social

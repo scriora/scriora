@@ -1,26 +1,26 @@
 // packages/media/src/processors/pdf/pdf-carousel.generator.ts
 import { promises as fs } from 'node:fs';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, type PDFImage } from 'pdf-lib';
 import sharp from 'sharp';
 import {
-  CarouselAspectRatio,
-  CarouselOptions,
+  type CarouselAspectRatio,
+  type CarouselOptions,
   CarouselOptionsSchema,
-  GeneratedCarousel,
+  type GeneratedCarousel,
 } from '../../contracts/pdf-carousel.contract.js';
 
 export interface CardSlideContent {
   title: string;
-  subtitle?: string;
-  body?: string;
-  bulletPoints?: string[];
-  slideNumber?: number;
-  totalSlides?: number;
-  branding?: string;
-  theme?: 'dark' | 'light' | 'brand';
-  accentColor?: string;
-  backgroundColor?: string;
-  textColor?: string;
+  subtitle?: string | undefined;
+  body?: string | undefined;
+  bulletPoints?: string[] | undefined;
+  slideNumber?: number | undefined;
+  totalSlides?: number | undefined;
+  branding?: string | undefined;
+  theme?: 'dark' | 'light' | 'brand' | undefined;
+  accentColor?: string | undefined;
+  backgroundColor?: string | undefined;
+  textColor?: string | undefined;
 }
 
 export class PdfCarouselError extends Error {
@@ -81,7 +81,7 @@ export class PdfCarouselGenerator {
       const processedImage = await this.processImage(rawBuffer, width, height, validatedOptions);
 
       // Embed into PDF
-      let pdfImage;
+      let pdfImage: PDFImage;
       if (processedImage.isPng) {
         pdfImage = await pdfDoc.embedPng(processedImage.buffer);
       } else {
@@ -273,7 +273,7 @@ export class PdfCarouselGenerator {
       const metadata = await sharp(rawBuffer).metadata();
       const hasAlpha = metadata.hasAlpha === true;
 
-      let pipeline = sharp(rawBuffer)
+      const pipeline = sharp(rawBuffer)
         .rotate() // auto-orient EXIF
         .resize({
           width: targetWidth,
@@ -288,7 +288,9 @@ export class PdfCarouselGenerator {
         return { buffer: pngBuf, isPng: true };
       }
 
-      const jpgBuf = await pipeline.jpeg({ quality: options.quality, progressive: false }).toBuffer();
+      const jpgBuf = await pipeline
+        .jpeg({ quality: options.quality, progressive: false })
+        .toBuffer();
       return { buffer: jpgBuf, isPng: false };
     } catch (err: unknown) {
       throw new PdfCarouselError(

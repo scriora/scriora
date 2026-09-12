@@ -1,7 +1,7 @@
 /**
  * packages/core/src/domain/time/datetime.service.ts
  * Enterprise Date & Time Engine for Scriora.
- * 
+ *
  * Provides:
  * 1. Timezone-aware, bilingual (Arabic / English) human-readable formatting.
  * 2. Accurate conversion between local timezones (e.g. Africa/Cairo, Asia/Riyadh) and canonical UTC.
@@ -41,10 +41,7 @@ export class DateTimeService {
    * By default, uses Latin digits ('ar-EG-u-nu-latn') for modern clean readable Arabic in tech UI,
    * with full option to use Eastern Arabic numerals ('useArabicNumerals: true').
    */
-  public format(
-    inputDate: Date | string | number,
-    options?: DateTimeFormatOptions
-  ): string {
+  public format(inputDate: Date | string | number, options?: DateTimeFormatOptions): string {
     const date = typeof inputDate === 'object' ? inputDate : new Date(inputDate);
     if (Number.isNaN(date.getTime())) {
       throw new Error('Invalid date provided to DateTimeService.format');
@@ -172,7 +169,9 @@ export class DateTimeService {
    * Host-machine timezone agnostic.
    */
   public toUtc(localDateTimeStr: string, timezone = this.defaultTimezone): Date {
-    const match = localDateTimeStr.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
+    const match = localDateTimeStr.match(
+      /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})(?::(\d{2}))?/
+    );
     if (!match) {
       throw new Error(`Invalid date format: ${localDateTimeStr}`);
     }
@@ -236,14 +235,62 @@ export class DateTimeService {
     const daysAhead = Math.min(options?.daysAhead || 7, 14);
 
     const goldenSlotTemplates = [
-      { dayOfWeek: 3, hour: 16, minute: 0, score: 100, reason: 'الأربعاء 4 مساءً: أعلى وقت تفاعل تاريخي على لينكد إن عالمياً' },
-      { dayOfWeek: 5, hour: 15, minute: 0, score: 96, reason: 'الجمعة 3 مساءً: ذروة إنهاء أسبوع العمل والاستعداد للتواصل' },
-      { dayOfWeek: 5, hour: 16, minute: 0, score: 94, reason: 'الجمعة 4 مساءً: معدل قراءة مرتفع للمقالات والكاروسيل' },
-      { dayOfWeek: 4, hour: 17, minute: 0, score: 92, reason: 'الخميس 5 مساءً: نافذة تفاعل مسائية قوية للمدراء وصناع القرار' },
-      { dayOfWeek: 3, hour: 15, minute: 0, score: 90, reason: 'الأربعاء 3 مساءً: بداية صعود التفاعل الأسبوعي' },
-      { dayOfWeek: 4, hour: 19, minute: 0, score: 85, reason: 'الخميس 7 مساءً: تصفح هادئ بعد ساعات العمل' },
-      { dayOfWeek: 2, hour: 16, minute: 0, score: 83, reason: 'الثلاثاء 4 مساءً: انتهاء ضغط بداية الأسبوع' },
-      { dayOfWeek: 1, hour: 17, minute: 0, score: 75, reason: 'الاثنين 5 مساءً: أفضل فترات الاثنين بعد انقضاء اجتماعات الصباح' },
+      {
+        dayOfWeek: 3,
+        hour: 16,
+        minute: 0,
+        score: 100,
+        reason: 'الأربعاء 4 مساءً: أعلى وقت تفاعل تاريخي على لينكد إن عالمياً',
+      },
+      {
+        dayOfWeek: 5,
+        hour: 15,
+        minute: 0,
+        score: 96,
+        reason: 'الجمعة 3 مساءً: ذروة إنهاء أسبوع العمل والاستعداد للتواصل',
+      },
+      {
+        dayOfWeek: 5,
+        hour: 16,
+        minute: 0,
+        score: 94,
+        reason: 'الجمعة 4 مساءً: معدل قراءة مرتفع للمقالات والكاروسيل',
+      },
+      {
+        dayOfWeek: 4,
+        hour: 17,
+        minute: 0,
+        score: 92,
+        reason: 'الخميس 5 مساءً: نافذة تفاعل مسائية قوية للمدراء وصناع القرار',
+      },
+      {
+        dayOfWeek: 3,
+        hour: 15,
+        minute: 0,
+        score: 90,
+        reason: 'الأربعاء 3 مساءً: بداية صعود التفاعل الأسبوعي',
+      },
+      {
+        dayOfWeek: 4,
+        hour: 19,
+        minute: 0,
+        score: 85,
+        reason: 'الخميس 7 مساءً: تصفح هادئ بعد ساعات العمل',
+      },
+      {
+        dayOfWeek: 2,
+        hour: 16,
+        minute: 0,
+        score: 83,
+        reason: 'الثلاثاء 4 مساءً: انتهاء ضغط بداية الأسبوع',
+      },
+      {
+        dayOfWeek: 1,
+        hour: 17,
+        minute: 0,
+        score: 75,
+        reason: 'الاثنين 5 مساءً: أفضل فترات الاثنين بعد انقضاء اجتماعات الصباح',
+      },
     ];
 
     const results: SmartScheduleSlot[] = [];
@@ -281,7 +328,10 @@ export class DateTimeService {
       }
     }
 
-    return results.sort((a, b) => b.score - a.score || new Date(a.datetimeUtc).getTime() - new Date(b.datetimeUtc).getTime());
+    return results.sort(
+      (a, b) =>
+        b.score - a.score || new Date(a.datetimeUtc).getTime() - new Date(b.datetimeUtc).getTime()
+    );
   }
 }
 

@@ -10,6 +10,7 @@ import { swaggerPlugin } from './plugins/swagger.js';
 import { approvalRoutes } from './routes/v1/approvals/index.js';
 import { authRoutes } from './routes/v1/auth/index.js';
 import { connectRoutes } from './routes/v1/connect/index.js';
+import { mediaRoutes } from './routes/v1/media/index.js';
 import { postRoutes } from './routes/v1/posts/index.js';
 import { socialAccountRoutes } from './routes/v1/social-accounts/index.js';
 import { telegramWebhookRoutes } from './routes/v1/webhooks/telegram.js';
@@ -100,6 +101,7 @@ export function buildApp(): FastifyInstance {
   app.register(socialAccountRoutes, { prefix: '/v1/social-accounts' });
   app.register(postRoutes, { prefix: '/v1/posts' });
   app.register(approvalRoutes, { prefix: '/v1/approve' });
+  app.register(mediaRoutes, { prefix: '/v1/media' });
   app.register(telegramWebhookRoutes, { prefix: '/v1/webhooks/telegram' });
 
   // Legacy route bridge for backward compatibility

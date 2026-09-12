@@ -52,13 +52,17 @@ timeline
   3. Integrated exponential backoff and automatic retry policies for rate-limited platforms.
   4. Independent post-publication verification loop verifying remote external states on target social platforms.
 
-### 📌 Phase 3: LinkedIn Enterprise Adapter
-* **Status:** 100% Completed & Verified ✅
+### 📌 Phase 3: LinkedIn Enterprise Adapter & PDF Carousel Media Engine
+* **Status:** 100% Completed & Verified Live ✅
 * **Delivered Capabilities:**
   1. Full `LinkedInAdapter` compliant with `PlatformContract` interface and OAuth 2.0 PKCE.
-  2. Multi-format support: long-form articles, single/multi-image posts, rich link cards, and PDF carousels.
-  3. Automated background token refresh prior to 60-day token expiration.
-  4. Live verification of post publication, metrics ingestion, and remote deletion.
+  2. **PDF Carousel Generator (`PdfCarouselGenerator`):** Ingests structured slide decks and raw images into standardized multi-page PDF documents (`1:1` square & `4:5` portrait) with vector quality and custom branding.
+  3. **Live Document Publishing (`rest/documents` 202503):** Direct streaming of PDF carousels to LinkedIn's modern versioned endpoints with interactive multi-slide swipe UI.
+  4. **Official Company Mentions:** Automatically maps organization URNs to official LinkedIn `CompanyAttributedEntity` (`urn:li:company:...`).
+  5. **Rich Article & Link Cards:** Native `shareMediaCategory: 'ARTICLE'` link preview cards.
+  6. **Timezone-Aware Scheduling (`DateTimeService`):** Localized Arabic/English formatting and golden time slot optimization (Buffer 4.8M post benchmark).
+  7. Automated background token refresh prior to 60-day token expiration.
+  8. Live verification of post publication on LinkedIn production accounts.
 
 ### 📌 Phase 4: Telegram Omnichannel Broadcast & C2 Admin Bot
 * **Status:** 100% Completed & Verified ✅

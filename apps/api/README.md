@@ -1,38 +1,34 @@
 # scriora-api
 
-HTTP API Gateway for Scriora  -  built with Fastify.
+HTTP API Gateway for Scriora — built with Fastify v5.
 
-**Mandate:** The single HTTP entry point for scriora-web and scriora-cli.
+**Mandate:** The single HTTP entry point for scriora-web, scriora-cli, and third-party integrations.
 Owns: Routes, auth middleware, request validation, rate limiting, OpenAPI spec.
-Delegates all business logic to scriora-core Application Contracts.
+Delegates all business logic to scriora-core Application Contracts and scriora-media.
 
 **Port:** 4000 (default)
 
 **Invariants:**
-- Zero business logic in this layer (delegate to scriora-core)
+- Zero untyped business logic in this layer (delegate to domain services)
 - Every route validates input via Zod schema before processing
-- Every route enforces authentication before reaching domain logic
-- No direct database access (only via scriora-core contracts)
+- Every route enforces authentication and workspace membership before reaching domain logic
+- Centralized Argon2id password hashing and AES-256-GCM secret envelope management
 
-Reference: scriora-docs/architecture/SCRIORA_REPOSITORY_SPECIFICATIONS.md
+## 🛣️ Core Route Groups (`/v1`)
 
-## Scripts
+| Route Prefix | Purpose | Key Endpoints |
+| :--- | :--- | :--- |
+| `/v1/auth` | Identity & Session | `POST /login`, `POST /register`, `POST /magic-link`, `POST /refresh` |
+| `/v1/workspaces` | Multi-tenancy | `GET /`, `POST /`, `GET /:wsId`, `PATCH /:wsId` |
+| `/v1/connect` | Social OAuth 2.0 | `GET /:platform`, `GET /callback` (LinkedIn, Discord, X) |
+| `/v1/social-accounts` | Connected Accounts | `GET /`, `DELETE /:accountId` |
+| `/v1/posts` | Unified Gateway | `POST /` (ACID Outbox queueing with idempotency) |
+| `/v1/media` | Media & Carousels | `POST /carousel` (PDF Carousel generation & download) |
+| `/v1/approve` | C2 Governance | `GET /`, `POST /:action` |
+| `/v1/webhooks` | Inbound Webhooks | `POST /telegram` (Telegram Bot C2 interactions) |
 
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start with hot-reload (tsx watch) |
-| `pnpm build` | Compile TypeScript |
-| `pnpm test` | Run route integration tests |
-| `pnpm typecheck` | Type-check without emitting |
-
-## Quality Gate
+## 🧪 Quality Gate
 
 ```bash
-pnpm typecheck && pnpm test && pnpm build
+pnpm --filter scriora-api typecheck && pnpm --filter scriora-api test && pnpm --filter scriora-api build
 ```
-
-Coverage minimum: 85%
-
-## Health Check
-
-`GET /health` → `{ status: "ok", service: "scriora-api" }`

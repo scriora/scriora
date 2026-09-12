@@ -25,6 +25,7 @@
     "fastify-plugin": "^6.0.0",
     "ioredis": "^6.0.0",
     "scriora-core": "workspace:*",
+    "scriora-media": "workspace:*",
     "scriora-social": "workspace:*",
     "zod": "^4.6.2",
     "zod-to-json-schema": "^3.25.2"

@@ -1,35 +1,35 @@
 # scriora-media
 
-Media Processing & Storage Infrastructure for Scriora.
+Media Processing, Document & PDF Carousel Infrastructure for Scriora.
 
-**Mandate:** Binary validation, image/video/PDF processing,
-storage abstraction, thumbnail generation, lifecycle management.
+**Mandate:** Binary validation, image/video/PDF processing, multi-page carousel generation, storage abstraction, thumbnail generation, lifecycle management.
 
 **Critical Invariant:**
 This package NEVER generates media via AI.
 AI generation (images, video) lives in scriora-agent.
 
-**Processors:**
-- Image: Sharp (libvips)  -  resize, crop, compress, thumbnail
-- Video: FFmpeg  -  transcode, normalize, thumbnail
-- PDF: Rasterize → carousel tiles (300 DPI, max 50 pages)
-- Panorama: Split wide images into carousel tiles
+## 🚀 Key Processors
 
-**Storage Adapters:** S3 · Cloudflare R2 · MinIO (self-hosted)
+- **PDF Carousel Generator (`PdfCarouselGenerator`):**
+  - Converts image arrays, URLs, or structured slide cards into standardized multi-page PDF carousels.
+  - Formats: Square (`1:1` @ 1080x1080) and Portrait (`4:5` @ 1080x1350) optimized for LinkedIn (+596% engagement).
+  - Dynamic card renderer (`renderSlideCard`): Sharp + SVG vector rendering with titles, subtitles, bullet points, numbering, and custom branding.
+- **Image Processor:** Sharp (libvips) — resize, crop, compress, Lanczos3 resampling, EXIF auto-orient.
+- **Video Processor:** FFmpeg — transcode, normalize, thumbnail generation.
+- **PDF Rasterizer:** Converts PDFs into carousel image tiles.
+- **Panorama Splitter:** Slices wide panoramic images into swipeable carousel tiles.
 
-**Security:**
-- Magic byte validation (not file extension)
+## 📦 Storage Adapters
+S3 · Cloudflare R2 · MinIO (self-hosted)
+
+## 🔒 Security Standards
+- Magic byte binary validation (`%PDF-`, `PNG`, `JFIF/JPEG`)
 - Decompression bomb protection
-- FFmpeg sandbox (300s timeout, no network)
 - EXIF GPS stripping from public variants
 - Original Master Preservation (never overwrite source)
 
-Reference: scriora-docs/architecture/SCRIORA_MEDIA_FRAMEWORK.md
-
-## Quality Gate
+## 🧪 Quality Gate & Verification
 
 ```bash
-pnpm typecheck && pnpm test && pnpm build
+pnpm --filter scriora-media typecheck && pnpm --filter scriora-media test && pnpm --filter scriora-media build
 ```
-
-Coverage minimum: 90%

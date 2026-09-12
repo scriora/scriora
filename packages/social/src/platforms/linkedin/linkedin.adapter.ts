@@ -326,6 +326,142 @@ export class LinkedInAdapter implements PlatformAdapter {
     return assetUrn;
   }
 
+  public async registerAndUploadDocument(
+    documentUrl: string,
+    authorUrn: string,
+    accessToken: string
+  ): Promise<string> {
+    if (documentUrl.startsWith('urn:li:document:')) {
+      return documentUrl;
+    }
+
+    try {
+      const initRes = await axios.post(
+        'https://api.linkedin.com/rest/documents?action=initializeUpload',
+        {
+          initializeUploadRequest: {
+            owner: authorUrn,
+          },
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'LinkedIn-Version': '202503',
+            'X-Restli-Protocol-Version': '2.0.0',
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const uploadUrl = initRes.data?.value?.uploadUrl;
+      const documentUrn = initRes.data?.value?.document;
+
+      if (!uploadUrl || !documentUrn) {
+        throw new PlatformError({
+          message: 'Failed to obtain LinkedIn document upload URL or document URN',
+          code: 'MEDIA_UPLOAD_FAILED',
+          retryable: true,
+        });
+      }
+
+      let fileBuffer: Buffer;
+      if (documentUrl.startsWith('http://') || documentUrl.startsWith('https://')) {
+        const resp = await axios.get(documentUrl, { responseType: 'arraybuffer' });
+        fileBuffer = Buffer.from(resp.data);
+      } else {
+        fileBuffer = await fs.readFile(documentUrl);
+      }
+
+      await axios.put(uploadUrl, fileBuffer, {
+        headers: {
+          'Content-Type': 'application/pdf',
+        },
+      });
+
+      return documentUrn;
+    } catch (err: unknown) {
+      if (err instanceof PlatformError) throw err;
+      throw new PlatformError({
+        message: `Failed to upload document to LinkedIn: ${err instanceof Error ? err.message : String(err)}`,
+        code: 'MEDIA_UPLOAD_FAILED',
+        retryable: false,
+      });
+    }
+  }
+
+  public async publishDocumentPost(
+    authorUrn: string,
+    accessToken: string,
+    documentUrn: string,
+    documentTitle: string,
+    request: PublishRequest,
+    visibilitySetting: string = 'PUBLIC'
+  ): Promise<PublishResult> {
+    try {
+      const postPayload = {
+        author: authorUrn,
+        commentary: request.text || '',
+        visibility: visibilitySetting === 'CONNECTIONS' ? 'CONNECTIONS' : 'PUBLIC',
+        distribution: {
+          feedDistribution: 'MAIN_FEED',
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        content: {
+          media: {
+            title: documentTitle,
+            id: documentUrn,
+          },
+        },
+        lifecycleState: 'PUBLISHED',
+        isReshareDisabledByAuthor: false,
+      };
+
+      const response = await axios.post('https://api.linkedin.com/rest/posts', postPayload, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'LinkedIn-Version': '202503',
+          'X-Restli-Protocol-Version': '2.0.0',
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const externalPostId =
+        (response.headers['x-restli-id'] as string) ||
+        (response.headers['x-linkedin-id'] as string) ||
+        response.data?.id ||
+        `urn:li:ugcPost:${request.idempotencyKey}`;
+      const externalPostUrl = `https://www.linkedin.com/feed/update/${encodeURIComponent(externalPostId)}`;
+
+      return {
+        status: 'SUCCEEDED',
+        externalPostId,
+        externalPostUrl,
+        publishedAt: new Date(),
+        operationId: request.idempotencyKey,
+        platformMetadata: {
+          documentUrn,
+          apiVersion: 'rest/posts (202503)',
+          responseStatus: response.status,
+        },
+      };
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        throw new PlatformError({
+          message: `LinkedIn Document Post error (${err.response?.status}): ${JSON.stringify(err.response?.data || err.message)}`,
+          code: 'API_ERROR',
+          retryable: false,
+          platformCode: String(err.response?.status),
+        });
+      }
+      throw new PlatformError({
+        message: err instanceof Error ? err.message : 'Unknown document publish failure',
+        code: 'UNKNOWN_ERROR',
+        retryable: false,
+      });
+    }
+  }
+
   public async verify(externalPostId: string): Promise<boolean> {
     if (!externalPostId) return false;
     return externalPostId.startsWith('urn:li:');
