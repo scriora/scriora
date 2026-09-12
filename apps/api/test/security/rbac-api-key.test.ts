@@ -156,6 +156,34 @@ describe('Security — RBAC, API key binding, OWNER protection', () => {
     expect(JSON.parse(pubRes.body).error.code).toBe('FORBIDDEN');
   });
 
+  it('denies EDITOR from minting API keys', async () => {
+    mockMembership('EDITOR');
+    const createKeySpy = vi.spyOn(prisma.apiKey, 'create');
+
+    const keyRes = await app.inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceA}/api-keys`,
+      headers: jwtHeaders(),
+      payload: { name: 'editor-key', scopes: ['posts:write'] },
+    });
+    expect(keyRes.statusCode).toBe(403);
+    expect(JSON.parse(keyRes.body).error.code).toBe('FORBIDDEN');
+    expect(createKeySpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects API key scopes outside the allowlist', async () => {
+    mockMembership('ADMIN');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/workspaces/${workspaceA}/api-keys`,
+      headers: jwtHeaders(),
+      payload: { name: 'bad-scope', scopes: ['admin:write'] },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('denies VIEWER from minting API keys and connecting accounts', async () => {
     mockMembership('VIEWER');
     const createKeySpy = vi.spyOn(prisma.apiKey, 'create');

@@ -8,18 +8,19 @@ import {
   UpdateWorkspaceSchema,
 } from 'scriora-core';
 import { z } from 'zod';
-import {
-  evaluateMemberRemoval,
-  requireWorkspaceAdmin,
-  requireWorkspaceWrite,
-} from '../../../lib/rbac.js';
+import { API_KEY_SCOPE, evaluateMemberRemoval, requireWorkspaceAdmin } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
+const ALLOWED_API_KEY_SCOPES = [API_KEY_SCOPE.POSTS_WRITE, API_KEY_SCOPE.ANALYTICS_READ] as const;
+
 const CreateApiKeySchema = z.object({
   name: z.string().min(1).max(100),
-  scopes: z.array(z.string()).default(['posts:write', 'analytics:read']),
+  scopes: z
+    .array(z.enum(ALLOWED_API_KEY_SCOPES))
+    .min(1)
+    .default([API_KEY_SCOPE.POSTS_WRITE, API_KEY_SCOPE.ANALYTICS_READ]),
   expiresInDays: z.number().int().min(1).max(365).optional(),
 });
 
@@ -364,10 +365,10 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
       }
     );
 
-    // Create API Key
+    // Create API Key (OWNER/ADMIN only; scopes are allowlisted)
     scoped.post(
       '/:wsId/api-keys',
-      { preHandler: [requireWorkspaceWrite] },
+      { preHandler: [requireWorkspaceAdmin] },
       async (request, reply) => {
         const { wsId } = request.params as { wsId: string };
         const parseResult = CreateApiKeySchema.safeParse(request.body);

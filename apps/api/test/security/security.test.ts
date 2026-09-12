@@ -306,6 +306,8 @@ describe('Security & Gateway Robustness Tests', () => {
       workspaceId: '11111111-1111-4111-8111-111111111111',
       platform: 'LINKEDIN',
       codeVerifier: 'verifier123',
+      userId: 'user-123',
+      nonce: '1234567890abcdef',
       postRedirectUri: 'https://evil.com/phishing',
     });
 
@@ -339,6 +341,10 @@ describe('Security & Gateway Robustness Tests', () => {
       });
     });
 
+    vi.spyOn(prisma.oAuthConnectNonce, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      userId: 'user-123',
+    } as never);
     vi.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
       id: '11111111-1111-4111-8111-111111111111',
     } as any);
