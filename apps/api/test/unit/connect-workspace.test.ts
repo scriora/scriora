@@ -71,4 +71,32 @@ describe('connect workspace membership helpers', () => {
     );
     expect(forbiddenReply.status).toHaveBeenCalledWith(403);
   });
+
+  it('rejects API keys whose workspaceId does not match the requested workspace', async () => {
+    const findSpy = vi.spyOn(prisma.workspaceMember, 'findUnique');
+    const reply = {
+      sent: false,
+      status: vi.fn().mockReturnThis(),
+      send: vi.fn(),
+    };
+
+    await verifyConnectWorkspace(
+      {
+        authContext: { userId: 'user-123' },
+        query: { workspaceId: '11111111-1111-4111-8111-111111111111' },
+        headers: {},
+        apiKey: { workspaceId: '33333333-3333-4333-8333-333333333333', scopes: ['posts:write'] },
+        id: 'req_test',
+      } as never,
+      reply as never
+    );
+
+    expect(reply.status).toHaveBeenCalledWith(403);
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: 'API_KEY_WORKSPACE_MISMATCH' }),
+      })
+    );
+    expect(findSpy).not.toHaveBeenCalled();
+  });
 });

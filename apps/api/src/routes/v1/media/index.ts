@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { PdfCarouselGenerator } from 'scriora-media';
 import { z } from 'zod';
+import { requireWorkspaceWrite } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
@@ -62,7 +63,7 @@ export const mediaRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /v1/media/carousel
    * Generates an interactive multi-page PDF Carousel document from structured slides or images.
    */
-  fastify.post('/carousel', async (request, reply) => {
+  fastify.post('/carousel', { preHandler: [requireWorkspaceWrite] }, async (request, reply) => {
     const parseResult = GenerateCarouselBodySchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send(

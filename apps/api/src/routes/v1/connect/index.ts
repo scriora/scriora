@@ -21,6 +21,7 @@ import {
   resolveConnectWorkspaceId,
   verifyConnectWorkspace,
 } from '../../../lib/connect-workspace.js';
+import { requireWorkspaceWrite } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 
@@ -183,7 +184,7 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
   // 1. Initiate OAuth Connect Flow (authenticated workspace member + signed state)
   fastify.get(
     '/:platform',
-    { preHandler: [verifyAuth, verifyConnectWorkspace] },
+    { preHandler: [verifyAuth, verifyConnectWorkspace, requireWorkspaceWrite] },
     async (request, reply) => {
       const { platform } = request.params as { platform: string };
       const query = request.query as { redirectUri?: string };
@@ -558,7 +559,7 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
   // 3. Connect Telegram Bot / Channel
   fastify.post(
     '/telegram',
-    { preHandler: [verifyAuth, verifyConnectWorkspace] },
+    { preHandler: [verifyAuth, verifyConnectWorkspace, requireWorkspaceWrite] },
     async (request, reply) => {
       const TelegramConnectSchema = z.object({
         botToken: z.string().min(10, 'botToken must be valid'),
@@ -699,7 +700,7 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
   // 5. Discord Account Connection (Webhook or Bot API Mode)
   fastify.post(
     '/discord',
-    { preHandler: [verifyAuth, verifyConnectWorkspace] },
+    { preHandler: [verifyAuth, verifyConnectWorkspace, requireWorkspaceWrite] },
     async (request, reply) => {
       const DiscordConnectSchema = z.discriminatedUnion('mode', [
         z.object({

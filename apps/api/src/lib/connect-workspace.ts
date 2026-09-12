@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from 'scriora-core';
 import { z } from 'zod';
+import { rejectApiKeyWorkspaceMismatch } from './rbac.js';
 import { err } from './response.js';
 
 export const ConnectWorkspaceIdSchema = z.string().uuid();
@@ -96,6 +97,10 @@ export async function verifyConnectWorkspace(
           request.id
         )
       );
+    return;
+  }
+
+  if (await rejectApiKeyWorkspaceMismatch(request, reply, targetWorkspaceId)) {
     return;
   }
 
