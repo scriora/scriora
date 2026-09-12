@@ -7,6 +7,11 @@ const otherWsId = '22222222-2222-4222-8222-222222222222';
 const userId = 'user-123';
 
 function mockWorkspaceMember(workspaceId = validWsId, memberUserId = userId) {
+  vi.spyOn(prisma.oAuthConnectNonce, 'create').mockResolvedValue({
+    nonce: 'test-nonce',
+    userId: memberUserId,
+    workspaceId,
+  } as never);
   return vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
     workspaceId,
     userId: memberUserId,
@@ -307,7 +312,13 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
       workspaceId: validWsId,
       platform: 'LINKEDIN',
       codeVerifier: 'verifier123',
+      userId,
+      nonce: '1234567890abcdef',
     });
+    vi.spyOn(prisma.oAuthConnectNonce, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      userId,
+    } as never);
     vi.spyOn(prisma.workspace, 'findUnique').mockResolvedValue(null);
     const findFirstSpy = vi.spyOn(prisma.workspace, 'findFirst');
     const txSpy = vi.spyOn(prisma, '$transaction');
@@ -321,6 +332,45 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(JSON.parse(res.body).error.code).toBe('UNKNOWN_WORKSPACE');
     expect(findFirstSpy).not.toHaveBeenCalled();
     expect(txSpy).not.toHaveBeenCalled();
+  });
+
+  it('GET /v1/connect/linkedin/callback rejects a reused nonce', async () => {
+    const state = app.jwt.sign({
+      workspaceId: validWsId,
+      platform: 'LINKEDIN',
+      codeVerifier: 'verifier123',
+      userId,
+      nonce: '1234567890abcdef',
+    });
+    vi.spyOn(prisma.oAuthConnectNonce, 'updateMany').mockResolvedValue({ count: 0 } as never);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/linkedin/callback?code=test-code&state=${state}`,
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe('INVALID_STATE');
+  });
+
+  it('GET /v1/connect/linkedin/callback rejects when initiator is no longer a member', async () => {
+    const state = app.jwt.sign({
+      workspaceId: validWsId,
+      platform: 'LINKEDIN',
+      codeVerifier: 'verifier123',
+      userId,
+      nonce: '1234567890abcdef',
+    });
+    vi.spyOn(prisma.oAuthConnectNonce, 'updateMany').mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/connect/linkedin/callback?code=test-code&state=${state}`,
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).error.code).toBe('OAUTH_MEMBERSHIP_REVOKED');
   });
 
   it('GET /v1/connect/instagram redirects to Meta OAuth authorization URL', async () => {
@@ -359,6 +409,15 @@ describe('API Routes — Connect & OAuth (LinkedIn & X)', () => {
     expect(location).toContain('https://threads.net/oauth/authorize');
     expect(location).toContain('client_id=');
     expect(location).toContain('state=');
+  });
+
+  it('POST /v1/connect/facebook/deauthorize rejects a missing signed_request', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/connect/facebook/deauthorize',
+    });
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error.code).toBe('INVALID_SIGNED_REQUEST');
   });
 
   it('GET /v1/connect/youtube redirects to Google OAuth authorization URL', async () => {

@@ -21,6 +21,7 @@ import {
   resolveConnectWorkspaceId,
   verifyConnectWorkspace,
 } from '../../../lib/connect-workspace.js';
+import { parseMetaSignedRequest } from '../../../lib/meta-signed-request.js';
 import { requireWorkspaceWrite } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
@@ -150,6 +151,8 @@ interface OAuthStatePayload {
   workspaceId: string;
   platform: string;
   codeVerifier: string;
+  userId: string;
+  nonce: string;
   postRedirectUri?: string;
 }
 
@@ -170,12 +173,20 @@ function parseOAuthState(decoded: unknown): OAuthStatePayload | null {
   if (typeof state.codeVerifier !== 'string') {
     return null;
   }
+  if (typeof state.userId !== 'string' || state.userId.length === 0) {
+    return null;
+  }
+  if (typeof state.nonce !== 'string' || state.nonce.length < 16) {
+    return null;
+  }
   const postRedirectUri =
     typeof state.postRedirectUri === 'string' ? state.postRedirectUri : undefined;
   return {
     workspaceId: state.workspaceId,
     platform: state.platform,
     codeVerifier: state.codeVerifier,
+    userId: state.userId,
+    nonce: state.nonce,
     ...(postRedirectUri !== undefined ? { postRedirectUri } : {}),
   };
 }
@@ -220,12 +231,24 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const codeVerifier = crypto.randomBytes(32).toString('base64url');
-      // Sign state as JWT containing workspaceId, platform, codeVerifier, and user's post-connect redirect
+      const nonce = crypto.randomBytes(16).toString('hex');
+      const userId = request.authContext!.userId;
+      await prisma.oAuthConnectNonce.create({
+        data: {
+          nonce,
+          userId,
+          workspaceId,
+          platform: platformUpper,
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      });
       const stateToken = fastify.jwt.sign(
         {
           workspaceId,
           platform: platformUpper,
           codeVerifier,
+          userId,
+          nonce,
           postRedirectUri: query.redirectUri,
         },
         { expiresIn: '10m' }
@@ -362,6 +385,51 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
             'UNSUPPORTED_PLATFORM',
             'VALIDATION_ERROR',
             `OAuth token exchange is not supported for platform: ${platform}`,
+            request.id
+          )
+        );
+    }
+
+    const consumed = await prisma.oAuthConnectNonce.updateMany({
+      where: {
+        nonce: decodedState.nonce,
+        userId: decodedState.userId,
+        workspaceId: decodedState.workspaceId,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { usedAt: new Date() },
+    });
+    if (consumed.count === 0) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'INVALID_STATE',
+            'AUTHENTICATION_ERROR',
+            'OAuth state nonce is invalid or has already been used',
+            request.id
+          )
+        );
+    }
+
+    const membership = await prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: decodedState.workspaceId,
+          userId: decodedState.userId,
+        },
+      },
+      select: { userId: true },
+    });
+    if (!membership) {
+      return reply
+        .status(403)
+        .send(
+          err(
+            'OAUTH_MEMBERSHIP_REVOKED',
+            'AUTHORIZATION_ERROR',
+            'Initiating user is no longer a member of this workspace',
             request.id
           )
         );
@@ -541,15 +609,95 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
     );
   });
 
-  // 2b. Meta / Social Platform Deauthorize Callback
-  fastify.all('/:platform/deauthorize', async (_request, reply) => {
-    return reply.status(200).send({ status: 'ok', message: 'Deauthorized successfully' });
+  async function readMetaSignedRequest(request: {
+    body?: unknown;
+    query?: unknown;
+  }): Promise<ReturnType<typeof parseMetaSignedRequest>> {
+    const body =
+      request.body && typeof request.body === 'object'
+        ? (request.body as Record<string, unknown>)
+        : {};
+    const query =
+      request.query && typeof request.query === 'object'
+        ? (request.query as Record<string, unknown>)
+        : {};
+    const signed =
+      (typeof body.signed_request === 'string' && body.signed_request) ||
+      (typeof query.signed_request === 'string' && query.signed_request) ||
+      '';
+    if (!signed) {
+      return null;
+    }
+    return parseMetaSignedRequest(signed);
+  }
+
+  // 2b. Meta deauthorize — require a valid signed_request (no fake 200s)
+  fastify.all('/:platform/deauthorize', async (request, reply) => {
+    const payload = await readMetaSignedRequest(request);
+    if (!payload) {
+      return reply
+        .status(401)
+        .send(
+          err(
+            'INVALID_SIGNED_REQUEST',
+            'AUTHENTICATION_ERROR',
+            'Meta signed_request is missing or invalid',
+            request.id
+          )
+        );
+    }
+    const externalUserId = typeof payload.user_id === 'string' ? payload.user_id : null;
+    if (externalUserId) {
+      const accounts = await prisma.socialAccount.findMany({
+        where: { externalAccountId: externalUserId },
+        select: { id: true },
+      });
+      await prisma.$transaction(async (tx) => {
+        for (const account of accounts) {
+          await tx.socialAccount.update({
+            where: { id: account.id },
+            data: { status: 'REVOKED' },
+          });
+          await tx.secretEnvelope.deleteMany({ where: { socialAccountId: account.id } });
+        }
+      });
+    }
+    return reply.status(200).send({ status: 'ok' });
   });
 
-  // 2c. Meta / Social Platform Data Deletion Callback (Meta Compliance)
-  fastify.all('/:platform/delete', async (_request, reply) => {
+  // 2c. Meta data deletion — require a valid signed_request (no fake 200s)
+  fastify.all('/:platform/delete', async (request, reply) => {
+    const payload = await readMetaSignedRequest(request);
+    if (!payload) {
+      return reply
+        .status(401)
+        .send(
+          err(
+            'INVALID_SIGNED_REQUEST',
+            'AUTHENTICATION_ERROR',
+            'Meta signed_request is missing or invalid',
+            request.id
+          )
+        );
+    }
     const confirmationCode = crypto.randomBytes(16).toString('hex');
     const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+    const externalUserId = typeof payload.user_id === 'string' ? payload.user_id : null;
+    if (externalUserId) {
+      const accounts = await prisma.socialAccount.findMany({
+        where: { externalAccountId: externalUserId },
+        select: { id: true },
+      });
+      await prisma.$transaction(async (tx) => {
+        for (const account of accounts) {
+          await tx.socialAccount.update({
+            where: { id: account.id },
+            data: { status: 'REVOKED' },
+          });
+          await tx.secretEnvelope.deleteMany({ where: { socialAccountId: account.id } });
+        }
+      });
+    }
     return reply.status(200).send({
       url: `${apiUrl}/v1/connect/deletion-status?code=${confirmationCode}`,
       confirmation_code: confirmationCode,

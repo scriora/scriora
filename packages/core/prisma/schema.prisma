@@ -400,6 +400,20 @@ model RefreshSession {
   @@map("refresh_sessions")
 }
 
+/// Single-use OAuth CSRF nonce bound to the initiating user + workspace.
+model OAuthConnectNonce {
+  nonce       String    @id @db.VarChar(64)
+  userId      String    @map("user_id") @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  platform    String    @db.VarChar(32)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("oauth_connect_nonces")
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // 3. SOCIAL ACCOUNTS & SECURITY
 // ═══════════════════════════════════════════════════════════════════════════
