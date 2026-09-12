@@ -49,9 +49,7 @@ export function formatTelegramCreatePostResult(
 ): string {
   const count = result.publicationCount;
   if (result.requiresApproval) {
-    const detail = result.message
-      ? `\n${sanitizeTelegramPlainText(result.message)}`
-      : '';
+    const detail = result.message ? `\n${sanitizeTelegramPlainText(result.message)}` : '';
     return [
       `🛡️ <b>تم الإرسال للاعتماد</b>`,
       ``,
@@ -141,10 +139,7 @@ export interface TelegramDbContext {
     recentPublicationsCount: number;
   }>;
   listAccounts: () => Promise<Array<{ platform: string; name: string; status: string }>>;
-  createPost: (params: {
-    text: string;
-    mediaUrls?: string[] | undefined;
-  }) => Promise<{
+  createPost: (params: { text: string; mediaUrls?: string[] | undefined }) => Promise<{
     publicationCount: number;
     requiresApproval?: boolean | undefined;
     message?: string | undefined;
@@ -561,7 +556,9 @@ export class TelegramBotService {
             await this.sendMessage(chatId, formatTelegramCreatePostResult(result, { photo: true }));
             return {
               handled: true,
-              action: result.requiresApproval ? 'photo_post_held_for_approval' : 'photo_post_created',
+              action: result.requiresApproval
+                ? 'photo_post_held_for_approval'
+                : 'photo_post_created',
             };
           } catch (postError: unknown) {
             await this.sendMessage(chatId, formatTelegramCreatePostError(postError));

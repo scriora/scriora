@@ -9,8 +9,8 @@
 
 import crypto from 'node:crypto';
 import {
-  createUnifiedPost,
   type CreateUnifiedPostResult,
+  createUnifiedPost,
   type PrismaClient,
   type PublishTarget,
 } from 'scriora-core';
@@ -52,9 +52,7 @@ const TELEGRAM_C2_WORKSPACE_SELECT = {
  * Prefer TELEGRAM_WORKSPACE_ID. If unset, allow a single workspace only —
  * never silently pick the oldest of many.
  */
-export async function resolveTelegramC2Workspace(
-  db: PrismaClient
-): Promise<TelegramC2Workspace> {
+export async function resolveTelegramC2Workspace(db: PrismaClient): Promise<TelegramC2Workspace> {
   const configuredId = process.env.TELEGRAM_WORKSPACE_ID?.trim();
   if (configuredId) {
     const workspace = await db.workspace.findUnique({
