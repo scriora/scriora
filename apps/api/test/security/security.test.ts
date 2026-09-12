@@ -142,6 +142,9 @@ describe('Security & Gateway Robustness Tests', () => {
         },
       });
     });
+    vi.spyOn(prisma.refreshSession, 'create').mockResolvedValue({
+      id: 'sess-1',
+    } as never);
 
     // 1. Register with password
     const regRes = await app.inject({
