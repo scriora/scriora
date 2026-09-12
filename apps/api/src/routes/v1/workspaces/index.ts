@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   CreateWorkspaceSchema,
+  hashApiKey,
   InviteMemberSchema,
   prisma,
   UpdateWorkspaceSchema,
@@ -366,7 +367,7 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
         const rawSecret = crypto.randomBytes(24).toString('base64url');
         const apiKeyString = `sk_live_${rawSecret}`;
         const keyPrefix = apiKeyString.slice(0, 12);
-        const keyHash = crypto.createHash('sha256').update(apiKeyString).digest('hex');
+        const keyHash = hashApiKey(apiKeyString);
 
         const expiresAt = expiresInDays
           ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)

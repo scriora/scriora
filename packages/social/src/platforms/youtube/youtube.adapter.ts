@@ -158,12 +158,10 @@ export class YouTubeAdapter implements PlatformAdapter {
 
     // Step 3: Custom thumbnail upload (optional)
     if (metadata.thumbnailUrl) {
-      await this.uploadThumbnail(videoId, metadata.thumbnailUrl, accessToken).catch((err) => {
-        // Thumbnail failures should not fail the entire publication
-        console.warn(
-          `[YouTubeAdapter] Warning: Thumbnail upload failed for video ${videoId}:`,
-          err
-        );
+      await this.uploadThumbnail(videoId, metadata.thumbnailUrl, accessToken).catch(() => {
+        // Thumbnail failures should not fail the entire publication.
+        // Static message only — never log URLs, titles, video IDs, or error text.
+        console.warn('[YouTubeAdapter] Thumbnail upload failed');
       });
     }
 
@@ -174,11 +172,8 @@ export class YouTubeAdapter implements PlatformAdapter {
         videoId,
         metadata.firstComment.trim(),
         accessToken
-      ).catch((err) => {
-        console.warn(
-          `[YouTubeAdapter] Warning: First comment posting failed for video ${videoId}:`,
-          err
-        );
+      ).catch(() => {
+        console.warn('[YouTubeAdapter] First comment posting failed');
         return undefined;
       });
     }

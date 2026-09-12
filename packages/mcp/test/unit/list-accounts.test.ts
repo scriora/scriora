@@ -22,7 +22,7 @@ describe('scriora_list_social_accounts auth', () => {
   });
 
   it('lists only after API key + membership bind the workspace', async () => {
-    vi.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
+    vi.spyOn(prisma.apiKey, 'findFirst').mockResolvedValue({
       id: 'key-1',
       workspaceId,
       userId: 'user-1',

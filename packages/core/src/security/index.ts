@@ -1,4 +1,11 @@
 export {
+  apiKeyFingerprintCandidates,
+  hashApiKey,
+  isLegacyApiKeyFingerprint,
+  legacySha256ApiKeyFingerprint,
+  resolveApiKeyPepper,
+} from './api-key-fingerprint.js';
+export {
   assertSafeRemoteUrl,
   coerceHostnameToIpv4,
   DEFAULT_SAFE_FETCH_MAX_BYTES,
