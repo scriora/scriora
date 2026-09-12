@@ -8,21 +8,22 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 
 ## 🌐 Supported Platforms
 
-| Platform | OAuth Version | Media Support | Status |
+| Platform | OAuth / Integration Type | Media Support | Status |
 |---|---|---|---|
-| **LinkedIn** | OAuth 2.0 (PKCE) | Text, Images, Video, PDF Documents | Production |
-| **X (Twitter)** | OAuth 2.0 (PKCE) | Text, Images, Video, Polls | Production |
-| **Threads** | OAuth 2.0 | Text, Images, Carousel, Video | Production |
-| **TikTok** | OAuth 2.0 | Short-form Video, Direct Share | Production |
-| **Instagram** | Meta Graph API | Reels, Carousel, Single Image | Production |
-| **Facebook** | Meta Graph API | Pages, Groups, Feed Posts | Production |
-| **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video | Production |
-| **Bluesky** | AT Protocol | Text, Images, Facets | Production |
-| **Mastodon** | ActivityPub / REST | Text, Media Attachments | Production |
-| **Pinterest** | OAuth 2.0 | Pins, Boards, Image/Video | Production |
-| **Reddit** | OAuth 2.0 | Subreddit text & link posts | Production |
-| **Telegram** | Bot API | Channel broadcast, Messages | Production |
-| **Discord** | Webhook / Bot API | Rich Embeds, Announcements | Production |
+| **LinkedIn** | OAuth 2.0 (PKCE) | Text, Images, Video, PDF Documents | 🟢 Production Live |
+| **X (Twitter)** | OAuth 2.0 (PKCE) | Text, Images, Video, 280-char Threading | 🟢 Production Live |
+| **Telegram** | Bot API v7 | Channel broadcast, Photos, §14 Approvals | 🟢 Production Live |
+| **Discord** | Webhook & Bot API v10 | Rich Embeds, Collages, Threads, Reactions | 🟢 Production Live |
+| **Slack** | Webhook / Bot API | Block Kit, Announcements, Channel broadcasts | 🚀 Next (Phase 6.2) |
+| **Reddit** | OAuth 2.0 (Script App) | Subreddit text & link posts, Flairs | 📋 Roadmap (Phase 7) |
+| **Facebook** | Meta Graph API | Pages, Groups, Feed Posts, Reels | ⏳ In Progress |
+| **Instagram** | Meta Graph API | Reels, Carousel, Single Image | ⏳ In Progress |
+| **Threads** | Meta Threads API | Text, Images, Carousel, Video | ⏳ In Progress |
+| **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video, Community | ⏳ Roadmap (Phase 8) |
+| **TikTok** | Content Posting API | Short-form Video, Direct Share | ⏳ Roadmap (Phase 8) |
+| **Bluesky** | AT Protocol | Text, Images, Facets | ⏳ Roadmap |
+| **Pinterest** | OAuth 2.0 (v5) | Pins, Boards, Image/Video | ⏳ Roadmap |
+| **Mastodon** | ActivityPub / REST | Text, Media Attachments | ⏳ Roadmap |
 
 ---
 

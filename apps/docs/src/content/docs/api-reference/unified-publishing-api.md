@@ -108,3 +108,4 @@ X-Workspace-Id: 4d2e70c7-3010-4d17-b3d8-cca91b5edbc6
 | **Instagram** | 2,200 | 10 | ✅ | ❌ | ❌ | ❌ |
 | **TikTok** | 2,200 | 35 | ✅ | ❌ | ❌ | ❌ |
 | **Facebook** | 63,206 | 10 | ✅ | ❌ | ❌ | ❌ |
+| **Reddit** *(Roadmap)* | 40,000 | 1 (or Link) | ❌ | ❌ | ❌ | ❌ |

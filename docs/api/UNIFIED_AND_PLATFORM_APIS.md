@@ -410,15 +410,16 @@ curl -X POST http://localhost:4000/v1/posts \
 
 ## 5. 📊 Comparison & Capability Matrix
 
-| Platform | Text Limit | Max Images | Max Video Size | Native Threads | Rich Embeds | Auto-Reactions | Pinning | Approvals (§14) |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Discord** | 2,000 | 10 (4 collage) | 25 MB | ✅ | ✅ | ✅ | ✅ | ✅ (Buttons) |
-| **Telegram** | 4,096 | 10 | 2 GB | ❌ | ❌ | ❌ | ✅ | ✅ (Inline Keyboard) |
-| **LinkedIn** | 3,000 | 9 (or PDF) | 5 GB | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **X (Twitter)**| 280 | 4 | 512 MB | ✅ (Auto) | ❌ | ❌ | ❌ | ❌ |
-| **Instagram** | 2,200 | 10 | 100 MB | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **TikTok** | 2,200 | 35 | 4 GB | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Facebook** | 63,206 | 10 | 10 GB | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Platform | Status | Text Limit | Max Images | Max Video Size | Native Threads | Rich Embeds | Auto-Reactions | Pinning | Approvals (§14) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Discord** | 🟢 Live | 2,000 | 10 (4 collage) | 25 MB | ✅ | ✅ | ✅ | ✅ | ✅ (Buttons) |
+| **Telegram** | 🟢 Live | 4,096 | 10 | 2 GB | ❌ | ❌ | ❌ | ✅ | ✅ (Inline Keyboard) |
+| **LinkedIn** | 🟢 Live | 3,000 | 9 (or PDF) | 5 GB | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **X (Twitter)**| 🟢 Live | 280 | 4 | 512 MB | ✅ (Auto) | ❌ | ❌ | ❌ | ❌ |
+| **Instagram** | 🟡 In Progress | 2,200 | 10 | 100 MB | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **TikTok** | 🟡 In Progress | 2,200 | 35 | 4 GB | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **Facebook** | 🟡 In Progress | 63,206 | 10 | 10 GB | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **Reddit** | 📋 Roadmap | 40,000 | 1 (or Link) | 1 GB | ❌ | ❌ (Markdown) | ❌ | ❌ | ❌ |
 
 ---
 
