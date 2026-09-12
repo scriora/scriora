@@ -236,4 +236,59 @@ describe('API Routes — Social Accounts', () => {
     expect(json.data[0].source).toBe('USER_ANALYTICS');
     expect(json.data[0].performanceMultiplier).toBe(1.45);
   });
+
+  it('DELETE /v1/social-accounts/:accountId revokes and wipes envelopes without hard delete', async () => {
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '11111111-1111-4111-8111-111111111111';
+    const accId = '22222222-2222-4222-8222-222222222222';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Primary Workspace',
+        slug: 'primary-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.socialAccount, 'findFirst').mockResolvedValue({ id: accId } as any);
+    const updateSpy = vi.fn().mockResolvedValue({ id: accId, status: 'REVOKED' });
+    const wipeSpy = vi.fn().mockResolvedValue({ count: 1 });
+    const hardDeleteSpy = vi.spyOn(prisma.socialAccount, 'deleteMany');
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) =>
+      callback({
+        socialAccount: { update: updateSpy },
+        secretEnvelope: { deleteMany: wipeSpy },
+      })
+    );
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/social-accounts/${accId}`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(updateSpy).toHaveBeenCalledWith({
+      where: { id: accId },
+      data: { status: 'REVOKED' },
+    });
+    expect(wipeSpy).toHaveBeenCalledWith({ where: { socialAccountId: accId } });
+    expect(hardDeleteSpy).not.toHaveBeenCalled();
+  });
 });
