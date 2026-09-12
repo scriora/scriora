@@ -1,19 +1,25 @@
 /**
  * Workspace-scoped MCP auth.
  *
- * Aligns with HTTP API keys: SHA-256(rawKey) lookup on `ApiKey`, workspace
- * binding, and membership. Optional HMAC (MCP_SIGNING_SECRET) when configured.
+ * Aligns with HTTP API keys: HMAC-SHA256 peppered fingerprint (plus legacy
+ * SHA-256 dual-verify) on `ApiKey`, workspace binding, and membership.
+ * Optional request HMAC (MCP_SIGNING_SECRET) when configured.
  * A caller-supplied workspaceId that does not match the key is rejected.
  */
 
 import crypto from 'node:crypto';
-import { prisma } from 'scriora-core';
+import {
+  apiKeyFingerprintCandidates,
+  hashApiKey,
+  isLegacyApiKeyFingerprint,
+  prisma,
+} from 'scriora-core';
 
 export const MCP_WRITE_ROLES = ['OWNER', 'ADMIN', 'EDITOR'] as const;
 export type McpWriteRole = (typeof MCP_WRITE_ROLES)[number];
 
-export function hashWorkspaceApiKey(rawKey: string): string {
-  return crypto.createHash('sha256').update(rawKey).digest('hex');
+export function hashWorkspaceApiKey(rawKey: string, env: NodeJS.ProcessEnv = process.env): string {
+  return hashApiKey(rawKey, env);
 }
 
 export function canonicalizeMcpSignedPayload(input: {
@@ -95,8 +101,8 @@ export async function authorizeWorkspaceScopedTool(
     };
   }
 
-  const keyRecord = await prisma.apiKey.findUnique({
-    where: { keyHash: hashWorkspaceApiKey(rawKey) },
+  const keyRecord = await prisma.apiKey.findFirst({
+    where: { keyHash: { in: apiKeyFingerprintCandidates(rawKey, env) } },
     select: {
       id: true,
       workspaceId: true,
@@ -104,6 +110,7 @@ export async function authorizeWorkspaceScopedTool(
       scopes: true,
       revokedAt: true,
       expiresAt: true,
+      keyHash: true,
     },
   });
 
@@ -200,7 +207,12 @@ export async function authorizeWorkspaceScopedTool(
   prisma.apiKey
     .update({
       where: { id: keyRecord.id },
-      data: { lastUsedAt: new Date() },
+      data: {
+        lastUsedAt: new Date(),
+        ...(isLegacyApiKeyFingerprint(keyRecord.keyHash, rawKey, env)
+          ? { keyHash: hashApiKey(rawKey, env) }
+          : {}),
+      },
     })
     .catch(() => {});
 

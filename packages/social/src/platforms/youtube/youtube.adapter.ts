@@ -18,6 +18,18 @@ import type {
 import { PlatformError } from '../../errors/social.error.js';
 import { YouTubeOAuth } from './youtube.oauth.js';
 
+/** Log adapter failures without echoing user URLs, titles, or raw error text. */
+function sanitizeYouTubeLogDetail(err: unknown): string {
+  if (!(err instanceof Error)) {
+    return 'non-error';
+  }
+  const code =
+    'code' in err && typeof (err as { code?: unknown }).code === 'string'
+      ? (err as { code: string }).code
+      : undefined;
+  return code ? `${err.name}:${code}` : err.name;
+}
+
 export interface YouTubeMetadata {
   title?: string | undefined;
   description?: string | undefined;
@@ -161,8 +173,7 @@ export class YouTubeAdapter implements PlatformAdapter {
       await this.uploadThumbnail(videoId, metadata.thumbnailUrl, accessToken).catch((err) => {
         // Thumbnail failures should not fail the entire publication
         console.warn(
-          `[YouTubeAdapter] Warning: Thumbnail upload failed for video ${videoId}:`,
-          err
+          `[YouTubeAdapter] Thumbnail upload failed for video ${videoId} (${sanitizeYouTubeLogDetail(err)})`
         );
       });
     }
@@ -176,8 +187,7 @@ export class YouTubeAdapter implements PlatformAdapter {
         accessToken
       ).catch((err) => {
         console.warn(
-          `[YouTubeAdapter] Warning: First comment posting failed for video ${videoId}:`,
-          err
+          `[YouTubeAdapter] First comment posting failed for video ${videoId} (${sanitizeYouTubeLogDetail(err)})`
         );
         return undefined;
       });

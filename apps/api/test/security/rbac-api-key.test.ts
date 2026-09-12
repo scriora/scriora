@@ -79,7 +79,7 @@ describe('Security — RBAC, API key binding, OWNER protection', () => {
   }) {
     const rawKey = options.rawKey ?? 'sk_live_rbac_test_key';
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-    vi.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
+    vi.spyOn(prisma.apiKey, 'findFirst').mockResolvedValue({
       id: '66666666-6666-4666-8666-666666666666',
       workspaceId: options.workspaceId,
       userId: options.userId ?? userId,

@@ -353,7 +353,8 @@ model WorkspaceMember {
 }
 
 /// Workspace-scoped API keys for programmatic access (developer integrations, CI/CD, MCP agents)
-/// Raw key is shown ONCE at creation. Only SHA-256(key) is stored.
+/// Raw key is shown ONCE at creation. Stored fingerprint is HMAC-SHA256(pepper, key);
+/// legacy rows may still hold SHA-256(key) and are dual-verified then upgraded.
 /// Key format: sk_live_<base62(32)> (production) | sk_test_<base62(32)> (development)
 model ApiKey {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -361,7 +362,7 @@ model ApiKey {
   userId      String    @map("user_id") @db.Uuid
   /// Human-readable label e.g. "Production CI", "n8n Integration"
   name        String    @db.VarChar(100)
-  /// SHA-256(rawKey) — used for constant-time lookup
+  /// HMAC-SHA256(pepper, rawKey) — legacy SHA-256(rawKey) accepted at verify
   keyHash     String    @unique @map("key_hash") @db.VarChar(64)
   /// Key prefix only, stored for display: "sk_live_aBcD..."
   keyPrefix   String    @map("key_prefix") @db.VarChar(20)

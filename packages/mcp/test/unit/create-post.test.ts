@@ -13,7 +13,7 @@ const ownerUserId = '33333333-3333-4333-8333-333333333333';
 const rawApiKey = 'sk_live_create_post_tests';
 
 function mockWorkspaceAuth(overrides?: { role?: string; scopes?: string[] }) {
-  vi.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
+  vi.spyOn(prisma.apiKey, 'findFirst').mockResolvedValue({
     id: 'key-1',
     workspaceId,
     userId: ownerUserId,

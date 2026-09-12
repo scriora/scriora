@@ -14,7 +14,7 @@ const userId = '33333333-3333-4333-8333-333333333333';
 const rawKey = 'sk_live_testkey_mcp_auth_1';
 
 function mockValidKey(overrides?: { workspaceId?: string; scopes?: string[] }) {
-  vi.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
+  vi.spyOn(prisma.apiKey, 'findFirst').mockResolvedValue({
     id: 'key-1',
     workspaceId: overrides?.workspaceId ?? workspaceId,
     userId,
@@ -39,8 +39,12 @@ describe('MCP workspace auth', () => {
     delete process.env.MCP_REQUEST_SIGNATURE;
   });
 
-  it('hashes API keys the same way as the HTTP API (SHA-256 raw key)', () => {
-    expect(hashWorkspaceApiKey(rawKey)).toBe(
+  it('fingerprints API keys with HMAC-SHA256, not raw SHA-256', () => {
+    const env = { API_KEY_PEPPER: 'mcp-test-pepper' };
+    expect(hashWorkspaceApiKey(rawKey, env)).toBe(
+      crypto.createHmac('sha256', 'mcp-test-pepper').update(rawKey).digest('hex')
+    );
+    expect(hashWorkspaceApiKey(rawKey, env)).not.toBe(
       crypto.createHash('sha256').update(rawKey).digest('hex')
     );
   });
@@ -75,7 +79,7 @@ describe('MCP workspace auth', () => {
   });
 
   it('rejects when the key user is not a workspace member', async () => {
-    vi.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
+    vi.spyOn(prisma.apiKey, 'findFirst').mockResolvedValue({
       id: 'key-1',
       workspaceId,
       userId,

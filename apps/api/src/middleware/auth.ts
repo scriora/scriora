@@ -1,6 +1,10 @@
-import crypto from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { prisma } from 'scriora-core';
+import {
+  apiKeyFingerprintCandidates,
+  hashApiKey,
+  isLegacyApiKeyFingerprint,
+  prisma,
+} from 'scriora-core';
 import { normalizeApiKeyScopes } from '../lib/rbac.js';
 import { err } from '../lib/response.js';
 
@@ -24,9 +28,8 @@ export async function verifyAuth(request: FastifyRequest, reply: FastifyReply): 
 
   // 1. API Key Auth path
   if (typeof apiKeyHeader === 'string' && apiKeyHeader.startsWith('sk_')) {
-    const keyHash = crypto.createHash('sha256').update(apiKeyHeader).digest('hex');
-    const keyRecord = await prisma.apiKey.findUnique({
-      where: { keyHash },
+    const keyRecord = await prisma.apiKey.findFirst({
+      where: { keyHash: { in: apiKeyFingerprintCandidates(apiKeyHeader) } },
       include: { user: true },
     });
 
@@ -62,11 +65,15 @@ export async function verifyAuth(request: FastifyRequest, reply: FastifyReply): 
       return;
     }
 
-    // Update lastUsedAt asynchronously
     prisma.apiKey
       .update({
         where: { id: keyRecord.id },
-        data: { lastUsedAt: new Date() },
+        data: {
+          lastUsedAt: new Date(),
+          ...(isLegacyApiKeyFingerprint(keyRecord.keyHash, apiKeyHeader)
+            ? { keyHash: hashApiKey(apiKeyHeader) }
+            : {}),
+        },
       })
       .catch(() => {});
 

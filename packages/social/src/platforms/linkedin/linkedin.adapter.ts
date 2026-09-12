@@ -301,7 +301,7 @@ export class LinkedInAdapter implements PlatformAdapter {
     }
 
     let fileBuffer: Buffer;
-    let contentType = 'image/png';
+    let contentType: string;
     try {
       const downloaded = await fetchSafeRemoteUrl(imageUrl);
       fileBuffer = downloaded.buffer;
