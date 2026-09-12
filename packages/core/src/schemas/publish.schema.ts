@@ -189,6 +189,19 @@ export const DiscordOptionsSchema = z.object({
   allowEveryoneMention: z.boolean().optional(),
 });
 
+export const FacebookOptionsSchema = z.object({
+  /** Facebook Page ID override */
+  pageId: z.string().optional(),
+  /** Optional link attachment for feed post */
+  link: z.string().url().optional(),
+  /** Whether the post is published immediately (false creates an unpublished Page draft) */
+  published: z.boolean().optional(),
+  /** Custom video thumbnail / cover image URL (attached to video post) */
+  videoThumbnailUrl: z.string().url().optional(),
+  /** Optional alt text for media accessibility */
+  altText: z.string().max(1000).optional(),
+});
+
 export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('LINKEDIN'), options: LinkedInOptionsSchema }),
   z.object({ platform: z.literal('X'), options: XOptionsSchema }),
@@ -196,7 +209,7 @@ export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('TIKTOK'), options: TikTokOptionsSchema }),
   z.object({ platform: z.literal('YOUTUBE'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('THREADS'), options: ThreadsOptionsSchema }),
-  z.object({ platform: z.literal('FACEBOOK'), options: z.object({}).passthrough() }),
+  z.object({ platform: z.literal('FACEBOOK'), options: FacebookOptionsSchema }),
   z.object({ platform: z.literal('BLUESKY'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('PINTEREST'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('TELEGRAM'), options: z.object({}).passthrough() }),
@@ -268,3 +281,4 @@ export type MediaRef = z.infer<typeof MediaRefSchema>;
 export type InstagramOptions = z.infer<typeof InstagramOptionsSchema>;
 export type ThreadsOptions = z.infer<typeof ThreadsOptionsSchema>;
 export type ThreadsThreadItem = z.infer<typeof ThreadsThreadItemSchema>;
+export type FacebookOptions = z.infer<typeof FacebookOptionsSchema>;

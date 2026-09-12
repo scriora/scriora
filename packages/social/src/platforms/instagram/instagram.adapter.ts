@@ -159,26 +159,20 @@ export class InstagramAdapter implements PlatformAdapter {
       if (isStory) {
         // Story Container (Single 9:16 vertical image or video)
         const isStoryVideo =
-          /\.(mp4|mov|avi|wmv)($|\?)/i.test(singleUrl) ||
-          request.metadata?.mediaType === 'VIDEO';
+          /\.(mp4|mov|avi|wmv)($|\?)/i.test(singleUrl) || request.metadata?.mediaType === 'VIDEO';
 
-        const res = await axios.post<{ id: string }>(
-          `${baseUrl}/${accountId}/media`,
-          null,
-          {
-            params: {
-              media_type: 'STORIES',
-              ...(isStoryVideo ? { video_url: singleUrl } : { image_url: singleUrl }),
-              access_token: accessToken,
-            },
-          }
-        );
+        const res = await axios.post<{ id: string }>(`${baseUrl}/${accountId}/media`, null, {
+          params: {
+            media_type: 'STORIES',
+            ...(isStoryVideo ? { video_url: singleUrl } : { image_url: singleUrl }),
+            access_token: accessToken,
+          },
+        });
         containerId = res.data.id;
       } else if (mediaUrls.length === 1) {
         if (isVideo) {
           // Reels / Video Container
-          const shareToFeed =
-            (request.metadata?.shareToFeed as boolean | undefined) ?? true;
+          const shareToFeed = (request.metadata?.shareToFeed as boolean | undefined) ?? true;
           const coverUrl = request.metadata?.coverUrl as string | undefined;
           const thumbOffset = request.metadata?.thumbOffset as number | undefined;
           const audioName = request.metadata?.audioName as string | undefined;
@@ -205,11 +199,9 @@ export class InstagramAdapter implements PlatformAdapter {
             params.trial_params = JSON.stringify(trialParams);
           }
 
-          const res = await axios.post<{ id: string }>(
-            `${baseUrl}/${accountId}/media`,
-            null,
-            { params }
-          );
+          const res = await axios.post<{ id: string }>(`${baseUrl}/${accountId}/media`, null, {
+            params,
+          });
           containerId = res.data.id;
         } else {
           // Single Image Container
@@ -229,11 +221,9 @@ export class InstagramAdapter implements PlatformAdapter {
             imageParams.user_tags = JSON.stringify(request.metadata.userTags);
           }
 
-          const res = await axios.post<{ id: string }>(
-            `${baseUrl}/${accountId}/media`,
-            null,
-            { params: imageParams }
-          );
+          const res = await axios.post<{ id: string }>(`${baseUrl}/${accountId}/media`, null, {
+            params: imageParams,
+          });
           containerId = res.data.id;
         }
       } else {
@@ -242,17 +232,13 @@ export class InstagramAdapter implements PlatformAdapter {
 
         for (const url of mediaUrls) {
           const isItemVideo = /\.(mp4|mov)($|\?)/i.test(url);
-          const childRes = await axios.post<{ id: string }>(
-            `${baseUrl}/${accountId}/media`,
-            null,
-            {
-              params: {
-                is_carousel_item: true,
-                ...(isItemVideo ? { media_type: 'VIDEO', video_url: url } : { image_url: url }),
-                access_token: accessToken,
-              },
-            }
-          );
+          const childRes = await axios.post<{ id: string }>(`${baseUrl}/${accountId}/media`, null, {
+            params: {
+              is_carousel_item: true,
+              ...(isItemVideo ? { media_type: 'VIDEO', video_url: url } : { image_url: url }),
+              access_token: accessToken,
+            },
+          });
           childContainerIds.push(childRes.data.id);
         }
 
@@ -302,15 +288,12 @@ export class InstagramAdapter implements PlatformAdapter {
       // Step 4: Resolve post permalink
       let postUrl: string | undefined;
       try {
-        const infoRes = await axios.get<{ permalink?: string }>(
-          `${baseUrl}/${publishedPostId}`,
-          {
-            params: {
-              fields: 'permalink',
-              access_token: accessToken,
-            },
-          }
-        );
+        const infoRes = await axios.get<{ permalink?: string }>(`${baseUrl}/${publishedPostId}`, {
+          params: {
+            fields: 'permalink',
+            access_token: accessToken,
+          },
+        });
         postUrl = infoRes.data.permalink;
       } catch {
         postUrl = `https://www.instagram.com/p/${publishedPostId}/`;
@@ -324,9 +307,17 @@ export class InstagramAdapter implements PlatformAdapter {
         operationId: containerId,
         platformMetadata: {
           containerId,
-          mediaType: isStory ? 'STORY' : mediaUrls.length > 1 ? 'CAROUSEL' : isVideo ? 'REELS' : 'IMAGE',
+          mediaType: isStory
+            ? 'STORY'
+            : mediaUrls.length > 1
+              ? 'CAROUSEL'
+              : isVideo
+                ? 'REELS'
+                : 'IMAGE',
           mediaCount: mediaUrls.length,
-          shareToFeed: isStory ? false : ((request.metadata?.shareToFeed as boolean | undefined) ?? true),
+          shareToFeed: isStory
+            ? false
+            : ((request.metadata?.shareToFeed as boolean | undefined) ?? true),
         },
       };
     } catch (e: unknown) {

@@ -82,6 +82,22 @@ describe('CrossPostOptimizer (Buffer & Postiz Heuristics)', () => {
     );
   });
 
+  it('warns about external links in Facebook post to avoid 14M study reach penalty', () => {
+    const result = crossPostOptimizer.optimize({
+      body: 'Check out our new update: https://scriora.com/blog/update',
+      targetPlatforms: ['FACEBOOK'],
+    });
+
+    expect(result.FACEBOOK.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'FACEBOOK_LINK_REACH_PENALTY',
+          severity: 'SUGGESTION',
+        }),
+      ])
+    );
+  });
+
   it('correctly splits long paragraphs without cutting words', () => {
     const text =
       'Sentence one is short. Sentence two is slightly longer and contains informative details. ' +

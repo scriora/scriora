@@ -1,78 +1,75 @@
 ---
 title: "MCP Tools & Resource Catalog"
+description: "Reference guide for Scriora Model Context Protocol (MCP) server tools, schemas, and readable resources"
 ---
 
-The Scriora MCP server exposes a rich set of tools and resources implementing the official Model Context Protocol specification.
-
----
-
-## 1. `scriora_create_post`
-
-Creates a new content draft within a designated workspace and pre-validates character limits per platform.
-
-### Input Schema
-```json
-{
-  "type": "object",
-  "properties": {
-    "workspaceId": { "type": "string", "description": "The target workspace ID" },
-    "body": { "type": "string", "description": "Post text content" },
-    "platforms": {
-      "type": "array",
-      "items": { "type": "string", "enum": ["linkedin", "x", "threads", "tiktok", "instagram", "facebook", "youtube"] },
-      "description": "Target platforms"
-    },
-    "mediaIds": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Optional media asset IDs"
-    }
-  },
-  "required": ["workspaceId", "body", "platforms"]
-}
-```
+The **Scriora MCP Server** (`packages/mcp`) connects LLMs and AI Agents directly to Scriora's publishing engine and Buffer datasets via the **Model Context Protocol (v2024-11-05)**.
 
 ---
 
-## 2. `scriora_schedule_post`
+## 1. `scriora_optimize_cross_post`
 
-Schedules a post for automatic dispatch via Inngest and the Outbox worker.
+Pre-flight compliance engine that evaluates copy and media against platform heuristics, limits, and Buffer algorithms (e.g. Facebook 14M zero-link penalty, Instagram 5-hashtag maximum, Threads single-video rule).
 
-### Input Schema
-```json
-{
-  "type": "object",
-  "properties": {
-    "publicationId": { "type": "string", "description": "ID of the publication to schedule" },
-    "scheduledAt": { "type": "string", "format": "date-time", "description": "ISO-8601 publication timestamp" }
-  },
-  "required": ["publicationId", "scheduledAt"]
-}
-```
+### Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `body` | `string` | Yes | Raw caption or message draft |
+| `targetPlatforms` | `array` | Yes | Array of platforms: `FACEBOOK`, `INSTAGRAM`, `THREADS`, `X`, `LINKEDIN` |
+| `mediaUrls` | `array` | No | Optional media asset URLs |
 
 ---
 
-## 3. `scriora_list_accounts`
+## 2. `scriora_get_smart_slots`
 
-Lists active social platform connections, token expiration states, and channel IDs.
+Retrieves empirical high-engagement posting windows backed by Buffer datasets:
+- **Facebook:** 14M posts (Thursday 9:00 AM peak score 100)
+- **Instagram:** 9.6M posts (Wednesday 12:00 PM peak score 100)
+- **X / Twitter:** 8.7M posts (Tuesday 9:00 AM peak score 100)
+- **Threads:** 2.5M posts (Wednesday 7:00 AM peak score 100)
 
-### Input Schema
-```json
-{
-  "type": "object",
-  "properties": {
-    "workspaceId": { "type": "string", "description": "The workspace ID" }
-  },
-  "required": ["workspaceId"]
-}
-```
+### Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `platform` | `enum` | Yes | `FACEBOOK`, `INSTAGRAM`, `THREADS`, `X`, `LINKEDIN`, `GENERAL` |
+| `timezone` | `string` | No | Target timezone (default: `Africa/Cairo`) |
+| `daysAhead` | `number` | No | Projection window in days (default: 7) |
 
 ---
 
-## 4. MCP Resources
+## 3. `scriora_list_social_accounts`
 
-The MCP server exposes readable resources for context-aware prompts:
+Discovers all connected social accounts in a workspace, including individual Facebook Pages, Instagram Business accounts, and Threads profiles.
 
-- `scriora://workspace/{id}/brand-voice`: Brand guidelines, tone of voice, banned keywords.
-- `scriora://workspace/{id}/recent-posts`: Recent 20 published posts for style matching.
-- `scriora://platforms/limits`: Real-time constraints (character limits, video formats, aspect ratios).
+### Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `workspaceId` | `string (UUID)` | Yes | The target Scriora workspace UUID |
+
+---
+
+## 4. `scriora_create_post`
+
+Stages a multi-destination post across Facebook Pages, Instagram, Threads, X, or LinkedIn. Automatically enforces the **Human Approval Gate** when required.
+
+### Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `workspaceId` | `string (UUID)` | Yes | Workspace UUID |
+| `body` | `string` | Yes | Post text content |
+| `targets` | `array` | Yes | Target destinations (`socialAccountId`, `platform`, `customBody`, `facebookOptions`) |
+| `mediaUrls` | `array` | No | URLs of attached media |
+| `scheduledAt` | `string (ISO)` | No | Optional scheduling timestamp |
+
+### Facebook Specific Options (`facebookOptions`)
+- `pageId`: Optional override Page ID.
+- `link`: Outbound link preview URL.
+- `published`: Set to `false` to stage as an unpublished Page draft.
+- `videoThumbnailUrl`: Custom thumbnail cover image for native video uploads.
+
+---
+
+## 5. MCP Resources
+
+- `scriora://platforms/limits`: Real-time platform constraints (character limits, media limits, and supported formats).
+- `scriora://workspace/{id}/brand-voice`: Workspace brand tone, guidelines, and negative keywords.

@@ -187,7 +187,7 @@ export class CrossPostOptimizer {
     let currentChunk = '';
 
     for (const paragraph of paragraphs) {
-      if ((currentChunk + '\n\n' + paragraph).trim().length <= maxChars) {
+      if (`${currentChunk}\n\n${paragraph}`.trim().length <= maxChars) {
         currentChunk = currentChunk ? `${currentChunk}\n\n${paragraph}` : paragraph;
       } else {
         if (currentChunk) {
@@ -199,7 +199,7 @@ export class CrossPostOptimizer {
         if (paragraph.length > maxChars) {
           const sentences = paragraph.split(/(?<=[.?!؟।])\s+/);
           for (const sentence of sentences) {
-            if ((currentChunk + ' ' + sentence).trim().length <= maxChars) {
+            if (`${currentChunk} ${sentence}`.trim().length <= maxChars) {
               currentChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
             } else {
               if (currentChunk) chain.push(currentChunk.trim());
@@ -208,7 +208,7 @@ export class CrossPostOptimizer {
                 const words = sentence.split(/\s+/);
                 currentChunk = '';
                 for (const word of words) {
-                  if ((currentChunk + ' ' + word).trim().length <= maxChars) {
+                  if (`${currentChunk} ${word}`.trim().length <= maxChars) {
                     currentChunk = currentChunk ? `${currentChunk} ${word}` : word;
                   } else {
                     if (currentChunk) chain.push(currentChunk.trim());
@@ -246,7 +246,7 @@ export class CrossPostOptimizer {
     for (const platform of input.targetPlatforms) {
       const config = PLATFORM_LIMITS[platform];
       const issues: CrossPostOptimizationIssue[] = [];
-      let adaptedBody = rawBody;
+      const adaptedBody = rawBody;
       let suggestedThreadChain: string[] | undefined;
 
       // 1. Media requirement validation
@@ -329,9 +329,7 @@ export class CrossPostOptimizer {
               'Publish images and videos as separate posts or attach only images or only video.',
           });
         }
-        const videoCount = mediaUrls.filter((url) =>
-          /\.(mp4|mov|avi|wmv)($|\?)/i.test(url)
-        ).length;
+        const videoCount = mediaUrls.filter((url) => /\.(mp4|mov|avi|wmv)($|\?)/i.test(url)).length;
         if (videoCount > 1) {
           issues.push({
             severity: 'ERROR',
@@ -355,6 +353,17 @@ export class CrossPostOptimizer {
             message:
               'Threads performs best when using 1 specific topic tag rather than multiple hashtags.',
             suggestedAction: 'Use metadata.topicTag to categorize your thread into community hubs.',
+          });
+        }
+      } else if (platform === 'FACEBOOK') {
+        if (urls.length > 0) {
+          issues.push({
+            severity: 'SUGGESTION',
+            code: 'FACEBOOK_LINK_REACH_PENALTY',
+            message:
+              'Buffer study of 14M posts shows 97.3% of top Facebook posts contain zero outbound links. Links in captions can reduce organic feed reach.',
+            suggestedAction:
+              'Consider publishing as a photo/carousel post and placing the link in the first comment.',
           });
         }
       }

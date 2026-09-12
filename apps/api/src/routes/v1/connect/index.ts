@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
 import {
   DiscordAdapter,
+  FacebookAdapter,
   InstagramAdapter,
   LinkedInAdapter,
   platformRegistry,
@@ -53,6 +54,13 @@ try {
 const realThreads = new ThreadsAdapter();
 try {
   platformRegistry.register(realThreads);
+} catch {
+  // Already registered
+}
+
+const realFacebook = new FacebookAdapter();
+try {
+  platformRegistry.register(realFacebook);
 } catch {
   // Already registered
 }
@@ -324,19 +332,39 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       accountName: tokens.accountName,
     });
 
+    // Ensure workspace exists or fallback to primary active workspace
+    let effectiveWorkspaceId = decodedState.workspaceId;
+    try {
+      const wsExists = await prisma.workspace.findUnique({
+        where: { id: effectiveWorkspaceId },
+        select: { id: true },
+      });
+      if (!wsExists) {
+        const defaultWs = await prisma.workspace.findFirst({
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        });
+        if (defaultWs) {
+          effectiveWorkspaceId = defaultWs.id;
+        }
+      }
+    } catch {
+      // Retain effectiveWorkspaceId from decoded state if workspace query fails
+    }
+
     // Upsert SocialAccount and SecretEnvelope in database
     const socialAccount = await prisma.$transaction(async (tx) => {
       const capabilitiesJson = JSON.parse(JSON.stringify(adapter.getCapabilities()));
       const account = await tx.socialAccount.upsert({
         where: {
           uq_social_accounts_account: {
-            workspaceId: decodedState.workspaceId,
+            workspaceId: effectiveWorkspaceId,
             platform: platformUpper,
             externalAccountId: tokens.externalAccountId,
           },
         },
         create: {
-          workspaceId: decodedState.workspaceId,
+          workspaceId: effectiveWorkspaceId,
           platform: platformUpper,
           externalAccountId: tokens.externalAccountId,
           accountName: tokens.accountName,
@@ -364,6 +392,68 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       return account;
     });
 
+    // For Facebook multi-page discovery: automatically connect all authorized Pages
+    const availablePages =
+      (tokens.rawPayload?.availablePages as Array<{
+        id: string;
+        name: string;
+        accessToken: string;
+        category?: string;
+      }>) || [];
+
+    const connectedAccountIds: string[] = [socialAccount.id];
+
+    if (platformUpper === 'FACEBOOK' && availablePages.length > 1) {
+      for (const page of availablePages) {
+        if (page.id === tokens.externalAccountId) continue; // primary already processed
+
+        const pageCipher = encryptPayload({
+          accessToken: page.accessToken,
+          expiresIn: 0,
+          accountName: `${page.name} (Facebook Page)`,
+        });
+
+        const additionalAccount = await prisma.$transaction(async (tx) => {
+          const pageAccount = await tx.socialAccount.upsert({
+            where: {
+              uq_social_accounts_account: {
+                workspaceId: effectiveWorkspaceId,
+                platform: 'FACEBOOK',
+                externalAccountId: page.id,
+              },
+            },
+            create: {
+              workspaceId: effectiveWorkspaceId,
+              platform: 'FACEBOOK',
+              externalAccountId: page.id,
+              accountName: `${page.name} (Facebook Page)`,
+              status: 'CONNECTED',
+              capabilities: JSON.parse(JSON.stringify(adapter.getCapabilities())),
+            },
+            update: {
+              accountName: `${page.name} (Facebook Page)`,
+              status: 'CONNECTED',
+              capabilities: JSON.parse(JSON.stringify(adapter.getCapabilities())),
+            },
+          });
+
+          await tx.secretEnvelope.deleteMany({ where: { socialAccountId: pageAccount.id } });
+          await tx.secretEnvelope.create({
+            data: {
+              socialAccountId: pageAccount.id,
+              envelopeData: Buffer.from(pageCipher.ciphertext),
+              keyId: pageCipher.keyId,
+              algorithm: 'AES-256-GCM',
+            },
+          });
+
+          return pageAccount;
+        });
+
+        connectedAccountIds.push(additionalAccount.id);
+      }
+    }
+
     if (decodedState.postRedirectUri) {
       const defaultDashboard = `${process.env.APP_URL ?? 'http://localhost:3000'}/dashboard`;
       let redirectTarget: URL;
@@ -385,11 +475,18 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.redirect(redirectTarget.toString());
     }
 
+    const pageCount = availablePages.length || 1;
+
     return reply.status(200).send(
       ok(
         {
-          message: `Successfully connected ${platformUpper} account: ${tokens.accountName}`,
+          message:
+            platformUpper === 'FACEBOOK' && pageCount > 1
+              ? `Successfully connected ${pageCount} Facebook Pages (${availablePages.map((p) => p.name).join(', ')})`
+              : `Successfully connected ${platformUpper} account: ${tokens.accountName}`,
           socialAccountId: socialAccount.id,
+          allConnectedAccountIds: connectedAccountIds,
+          availablePages: availablePages.map((p) => ({ id: p.id, name: p.name })),
         },
         request.id
       )

@@ -325,6 +325,10 @@ describe('Security & Gateway Robustness Tests', () => {
       });
     });
 
+    vi.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      id: '11111111-1111-4111-8111-111111111111',
+    } as any);
+
     const originalKey = process.env.MASTER_ENCRYPTION_KEY;
     try {
       // 64-char hex key (32 bytes)

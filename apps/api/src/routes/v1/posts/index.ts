@@ -5,9 +5,10 @@ import {
   crossPostOptimizer,
   defaultDateTimeService,
   PaginationQuerySchema,
+  type PlatformTarget,
   PublishPayloadSchema,
-  SocialPlatformSchema,
   prisma,
+  SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
@@ -381,12 +382,19 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // Fallback to workspace benchmark schedule
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: { timezone: true },
-    });
-
-    const effectiveTimezone = timezone || workspace?.timezone || 'UTC';
+    let effectiveTimezone =
+      timezone || (request.workspace as { timezone?: string } | undefined)?.timezone;
+    if (!effectiveTimezone) {
+      try {
+        const workspace = await prisma.workspace.findUnique({
+          where: { id: workspaceId },
+          select: { timezone: true },
+        });
+        effectiveTimezone = workspace?.timezone || 'UTC';
+      } catch {
+        effectiveTimezone = 'UTC';
+      }
+    }
     const slots = defaultDateTimeService.getSmartScheduleSlots({
       timezone: effectiveTimezone,
       platform: platform ?? 'GENERAL',
@@ -530,11 +538,9 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     const analysis = crossPostOptimizer.optimize({
       body,
       mediaUrls,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      targetPlatforms: targetPlatforms as any,
+      targetPlatforms: targetPlatforms as PlatformTarget[],
     });
 
     return reply.status(200).send(ok(analysis, request.id));
   });
 };
-

@@ -1,10 +1,13 @@
 import type { Prisma, PrismaClient } from 'scriora-core';
 import {
   DiscordAdapter,
+  FacebookAdapter,
+  InstagramAdapter,
   LinkedInAdapter,
   platformRegistry,
   type SocialPlatformType,
   TelegramAdapter,
+  ThreadsAdapter,
   XAdapter,
 } from 'scriora-social';
 import { z } from 'zod';
@@ -29,6 +32,21 @@ function ensureAdaptersRegistered() {
   if (!platformRegistry.has('DISCORD')) {
     try {
       platformRegistry.register(new DiscordAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('INSTAGRAM')) {
+    try {
+      platformRegistry.register(new InstagramAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('THREADS')) {
+    try {
+      platformRegistry.register(new ThreadsAdapter());
+    } catch {}
+  }
+  if (!platformRegistry.has('FACEBOOK')) {
+    try {
+      platformRegistry.register(new FacebookAdapter());
     } catch {}
   }
 }

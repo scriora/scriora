@@ -52,7 +52,19 @@ export interface SmartScheduleOptions {
   startDate?: Date | undefined;
   daysAhead?: number | undefined;
   platform?:
-    | ('LINKEDIN' | 'X' | 'INSTAGRAM' | 'THREADS' | 'TIKTOK' | 'YOUTUBE' | 'FACEBOOK' | 'PINTEREST' | 'BLUESKY' | 'TELEGRAM' | 'GENERAL')
+    | (
+        | 'LINKEDIN'
+        | 'X'
+        | 'INSTAGRAM'
+        | 'THREADS'
+        | 'TIKTOK'
+        | 'YOUTUBE'
+        | 'FACEBOOK'
+        | 'PINTEREST'
+        | 'BLUESKY'
+        | 'TELEGRAM'
+        | 'GENERAL'
+      )
     | undefined;
   history?: HistoricalPostEngagement[] | undefined;
 }
@@ -714,6 +726,60 @@ export class DateTimeService {
       },
     ];
 
+    const facebookSlotTemplates = [
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 9,
+        minute: 0,
+        score: 100,
+        reason:
+          'الخميس 9:00 ص: أعلى أوقات التفاعل عالمياً على فيسبوك عبر دراسة Buffer لـ 14M منشور (الذروة الذهبية)',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 8,
+        minute: 0,
+        score: 98,
+        reason:
+          'الأربعاء 8:00 ص: أفضل يوم تفاعل أسبوعي إجمالي على صفحات فيسبوك والبدء المبكر للمتابعين',
+      },
+      {
+        dayOfWeek: 2, // Tuesday
+        hour: 8,
+        minute: 0,
+        score: 95,
+        reason: 'الثلاثاء 8:00 ص: تصفح صباحي قوي وتفاعل مرتفع مع منشورات الصور والألبومات',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 12,
+        minute: 0,
+        score: 93,
+        reason: 'الأربعاء 12:00 م: استراحة الغداء وزيادة المشاركات والتعليقات على صفحات الأعمال',
+      },
+      {
+        dayOfWeek: 0, // Sunday
+        hour: 10,
+        minute: 0,
+        score: 90,
+        reason: 'الأحد 10:00 ص: تفاعل عائلي واجتماعي هادئ وارتفاع نسبة قراءة المنشورات الطويلة',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 9,
+        minute: 0,
+        score: 88,
+        reason: 'الجمعة 9:00 ص: تفاعل صباحي ملحوظ قبل تراجع النشاط المعتاد في عطلة نهاية الأسبوع',
+      },
+      {
+        dayOfWeek: 1, // Monday
+        hour: 10,
+        minute: 0,
+        score: 85,
+        reason: 'الاثنين 10:00 ص: عودة النشاط ومطالعة تحديثات الشركات والصفحات المهنية',
+      },
+    ];
+
     const baseTemplates =
       platform === 'X'
         ? xSlotTemplates
@@ -721,7 +787,9 @@ export class DateTimeService {
           ? instagramSlotTemplates
           : platform === 'THREADS'
             ? threadsSlotTemplates
-            : linkedInSlotTemplates;
+            : platform === 'FACEBOOK'
+              ? facebookSlotTemplates
+              : linkedInSlotTemplates;
     const learnedTemplates = this.learnScheduleTemplates(
       history,
       timezone,

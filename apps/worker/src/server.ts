@@ -6,6 +6,8 @@
 
 import { serve } from 'inngest/node';
 import {
+  DiscordAdapter,
+  FacebookAdapter,
   InstagramAdapter,
   LinkedInAdapter,
   platformRegistry,
@@ -34,6 +36,11 @@ if (!platformRegistry.has('TELEGRAM')) {
     platformRegistry.register(new TelegramAdapter());
   } catch {}
 }
+if (!platformRegistry.has('DISCORD')) {
+  try {
+    platformRegistry.register(new DiscordAdapter());
+  } catch {}
+}
 if (!platformRegistry.has('INSTAGRAM')) {
   try {
     platformRegistry.register(new InstagramAdapter());
@@ -42,6 +49,11 @@ if (!platformRegistry.has('INSTAGRAM')) {
 if (!platformRegistry.has('THREADS')) {
   try {
     platformRegistry.register(new ThreadsAdapter());
+  } catch {}
+}
+if (!platformRegistry.has('FACEBOOK')) {
+  try {
+    platformRegistry.register(new FacebookAdapter());
   } catch {}
 }
 

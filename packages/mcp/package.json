@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "scriora-core": "workspace:*",
     "zod": "^4.6.2"
   },
   "devDependencies": {

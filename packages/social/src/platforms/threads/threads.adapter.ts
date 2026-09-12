@@ -20,15 +20,16 @@ export interface ThreadsMetadata {
   topicTag?: string | undefined;
   replyControl?: 'everyone' | 'accounts_you_follow' | 'mentioned_only' | undefined;
   altText?: string[] | string | undefined;
-  threadItems?: Array<{
-    content: string;
-    mediaUrls?: string[] | undefined;
-    topicTag?: string | undefined;
-    altText?: string[] | string | undefined;
-  }> | undefined;
+  threadItems?:
+    | Array<{
+        content: string;
+        mediaUrls?: string[] | undefined;
+        topicTag?: string | undefined;
+        altText?: string[] | string | undefined;
+      }>
+    | undefined;
   mediaType?: 'TEXT' | 'IMAGE' | 'VIDEO' | 'CAROUSEL' | undefined;
 }
-
 
 export class ThreadsAdapter implements PlatformAdapter {
   public readonly platform: SocialPlatformType = 'THREADS';
@@ -122,10 +123,9 @@ export class ThreadsAdapter implements PlatformAdapter {
     const replyToId = (request.metadata?.replyToId as string) || undefined;
     const linkAttachment = (request.metadata?.linkAttachment as string) || undefined;
     const topicTag = (request.metadata?.topicTag as string) || undefined;
-    const replyControl = (request.metadata?.replyControl as
-      | 'everyone'
-      | 'accounts_you_follow'
-      | 'mentioned_only') || undefined;
+    const replyControl =
+      (request.metadata?.replyControl as 'everyone' | 'accounts_you_follow' | 'mentioned_only') ||
+      undefined;
     const altText = request.metadata?.altText as string[] | string | undefined;
     const threadItems = request.metadata?.threadItems as
       | Array<{
@@ -529,7 +529,8 @@ export class ThreadsAdapter implements PlatformAdapter {
     const childIds: string[] = [];
 
     for (let i = 0; i < params.mediaUrls.length; i++) {
-      const url = params.mediaUrls[i]!;
+      const url = params.mediaUrls[i];
+      if (!url) continue;
       const isVideo = this.isVideoUrl(url);
       const itemData: Record<string, string | boolean> = {
         media_type: isVideo ? 'VIDEO' : 'IMAGE',

@@ -220,7 +220,10 @@ describe('Instagram Adapter & OAuth Suite', () => {
     });
 
     it('rejects carousels with more than 10 media items', async () => {
-      const elevenUrls = Array.from({ length: 11 }, (_, i) => `https://cdn.scriora.com/img_${i}.jpg`);
+      const elevenUrls = Array.from(
+        { length: 11 },
+        (_, i) => `https://cdn.scriora.com/img_${i}.jpg`
+      );
 
       await expect(
         adapter.publish({
@@ -332,9 +335,7 @@ describe('Instagram Adapter & OAuth Suite', () => {
       expect(params.thumb_offset).toBe(1500);
       expect(params.share_to_feed).toBe(false);
       expect(params.collaborators).toBe(JSON.stringify(['scriora_team', 'partner_brand']));
-      expect(params.trial_params).toBe(
-        JSON.stringify({ graduationStrategy: 'SS_PERFORMANCE' })
-      );
+      expect(params.trial_params).toBe(JSON.stringify({ graduationStrategy: 'SS_PERFORMANCE' }));
     });
   });
 

@@ -596,6 +596,10 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       },
     } as any);
 
+    vi.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      timezone: 'UTC',
+    } as any);
+
     const res = await app.inject({
       method: 'GET',
       url: '/v1/posts/smart-schedule?platform=THREADS&limit=3',
@@ -666,4 +670,3 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     );
   });
 });
-

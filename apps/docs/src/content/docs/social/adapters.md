@@ -18,7 +18,7 @@ Scriora's social orchestration layer (`@scriora/social`) abstracts differences b
 | **Threads** | Meta Threads Graph API v1.0 | Text (500), Images, Carousel, Video, Chained | 🟢 Production Live |
 | **Reddit** | OAuth 2.0 (Script App) | Subreddit text & link posts, Flairs | 📋 Roadmap (Phase 7) |
 | **Slack** | Webhook / Bot API | Block Kit, Announcements, Channel broadcasts | 📋 Future Roadmap |
-| **Facebook** | Meta Graph API | Pages, Groups, Feed Posts, Reels | ⏳ In Progress |
+| **Facebook** | Meta Graph API v21 | Pages, Feed Posts, Albums, Video | 🟢 Production Live |
 | **YouTube** | Google OAuth 2.0 | Shorts, Long-form Video, Community | ⏳ Roadmap (Phase 8) |
 | **TikTok** | Content Posting API | Short-form Video, Direct Share | ⏳ Roadmap (Phase 8) |
 | **Bluesky** | AT Protocol | Text, Images, Facets | ⏳ Roadmap |
