@@ -109,7 +109,7 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       },
     } as any);
 
-    vi.spyOn(prisma.outboxCommand, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
     vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
       { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
       { id: xAccId, workspaceId: wsId, platform: 'X' },
@@ -268,7 +268,7 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       },
     } as any);
 
-    vi.spyOn(prisma.outboxCommand, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
     vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
       { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
     ] as any);
@@ -366,7 +366,7 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       },
     } as any);
 
-    vi.spyOn(prisma.outboxCommand, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
     vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
       { id: tgChannelAccId, workspaceId: wsId, platform: 'TELEGRAM', accountName: 'Main Channel' },
       { id: tgGroupAccId, workspaceId: wsId, platform: 'TELEGRAM', accountName: 'Community Group' },
@@ -668,5 +668,171 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.data.X.issues).toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'X_LINK_PENALTY_AVOIDANCE' })])
     );
+  });
+
+  it('POST /v1/posts with requiresApproval=true holds publication and does not create a sweepable outbox', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const userId = 'user-123';
+    const linkedinAccId = '33333333-3333-4333-8333-333333333333';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId,
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Approval WS',
+        slug: 'approval-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: userId,
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: true,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
+      { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
+    ] as any);
+
+    const mockTx = {
+      content: { create: vi.fn().mockResolvedValue({ id: 'content-approval' }) },
+      contentVariant: {
+        create: vi.fn().mockResolvedValue({ id: 'variant-approval' }),
+      },
+      publication: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: 'pub-approval', ...args.data })
+          ),
+      },
+      publishAttempt: {
+        create: vi.fn().mockResolvedValue({ id: 'att-approval' }),
+      },
+      outboxCommand: {
+        create: vi.fn(),
+      },
+      approval: {
+        create: vi.fn().mockResolvedValue({ id: 'approval-1' }),
+      },
+      approvalToken: {
+        create: vi.fn().mockResolvedValue({ id: 'token-1' }),
+      },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const token = app.jwt.sign({ sub: userId });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'Needs human approval before publish',
+        targets: [{ socialAccountId: linkedinAccId, platform: 'LINKEDIN' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(json.data.message).toBe('Submitted for approval');
+    expect(json.data.publications[0].status).toBe('REQUIRES_APPROVAL');
+    expect(json.data.publications[0].outboxCommandId).toBeNull();
+
+    expect(mockTx.publication.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ status: 'REQUIRES_APPROVAL' }),
+      })
+    );
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+    expect(mockTx.approval.create).toHaveBeenCalledTimes(1);
+    expect(mockTx.approvalToken.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST /v1/posts scheduled + requiresApproval does not create an outbox even when availableAt would be now-eligible later', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const userId = 'user-123';
+    const linkedinAccId = '33333333-3333-4333-8333-333333333333';
+    const futureDate = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId,
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Scheduled Approval WS',
+        slug: 'sched-approval-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: userId,
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: true,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
+      { id: linkedinAccId, workspaceId: wsId, platform: 'LINKEDIN' },
+    ] as any);
+
+    const mockTx = {
+      content: { create: vi.fn().mockResolvedValue({ id: 'content-sched-appr' }) },
+      contentVariant: { create: vi.fn().mockResolvedValue({ id: 'variant-sched-appr' }) },
+      publication: {
+        create: vi
+          .fn()
+          .mockImplementation((args: TxDataArgs) =>
+            Promise.resolve({ id: 'pub-sched-appr', ...args.data })
+          ),
+      },
+      publishAttempt: { create: vi.fn().mockResolvedValue({ id: 'att-sched-appr' }) },
+      outboxCommand: { create: vi.fn() },
+      approval: { create: vi.fn().mockResolvedValue({ id: 'approval-sched' }) },
+      approvalToken: { create: vi.fn().mockResolvedValue({ id: 'token-sched' }) },
+    };
+
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const token = app.jwt.sign({ sub: userId });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'Scheduled post awaiting approval',
+        scheduledAt: futureDate,
+        targets: [{ socialAccountId: linkedinAccId, platform: 'LINKEDIN' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const json = JSON.parse(res.body);
+    expect(json.data.publications[0].status).toBe('REQUIRES_APPROVAL');
+    expect(mockTx.publication.create.mock.calls[0][0].data.scheduledAt).toEqual(
+      new Date(futureDate)
+    );
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
   });
 });

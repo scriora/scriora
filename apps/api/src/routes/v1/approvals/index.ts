@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { ApprovalDecisionSchema, prisma } from 'scriora-core';
 import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
+import { enqueueApprovedPublicationOutbox } from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
@@ -178,8 +179,10 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
           data: { status: newPublicationStatus },
         });
 
-        // If rejected, remove pending outbox command
-        if (decision === 'REJECTED') {
+        if (decision === 'APPROVED') {
+          // Create a sweepable PENDING outbox only after the §14 gate passes.
+          await enqueueApprovedPublicationOutbox(tx, approval.resourceId);
+        } else {
           await tx.outboxCommand.deleteMany({
             where: { publicationId: approval.resourceId, status: 'PENDING' },
           });

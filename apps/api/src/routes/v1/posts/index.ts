@@ -12,6 +12,7 @@ import {
 } from 'scriora-core';
 import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
+import { buildSocialPublishOutboxPayload } from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
@@ -64,26 +65,22 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     const workspaceId = request.workspace!.id;
     const userId = request.authContext!.userId;
 
-    // Idempotency check: 24h window (§7.4)
-    const existingOutbox = await prisma.outboxCommand.findFirst({
+    // Idempotency check: 24h window (§7.4). Keyed on Publication so
+    // requiresApproval posts (which have no sweepable outbox yet) still replay.
+    const existingPublication = await prisma.publication.findFirst({
       where: {
-        publication: {
-          idempotencyKey: { startsWith: idempotencyKey },
-          workspaceId,
-        },
+        workspaceId,
+        idempotencyKey: { startsWith: idempotencyKey },
         createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      },
-      include: {
-        publication: true,
       },
     });
 
-    if (existingOutbox) {
+    if (existingPublication) {
       return reply.status(202).send(
         ok(
           {
-            publicationId: existingOutbox.publicationId,
-            status: existingOutbox.publication.status,
+            publicationId: existingPublication.id,
+            status: existingPublication.status,
             idempotentReplay: true,
           },
           request.id
@@ -201,31 +198,38 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        // 5. Create OutboxCommand (Transactional Outbox Pattern)
-        const payloadJson = JSON.parse(
-          JSON.stringify({
-            workspaceId,
-            body: targetBody,
-            platform: target.platform,
-            socialAccountId: target.socialAccountId,
-            mediaUrls: resolvedMediaUrls,
-            idempotencyKey: targetIdempotency,
-            fingerprint,
-            options: target.platformOptions || {},
-          })
-        );
+        // 5. Create OutboxCommand only when the §14 gate is not holding dispatch.
+        // A PENDING row is sweepable; creating one here would publish before approval.
+        let outboxCommandId: string | null = null;
+        if (!requiresApproval) {
+          const payloadJson = JSON.parse(
+            JSON.stringify(
+              buildSocialPublishOutboxPayload({
+                workspaceId,
+                body: targetBody,
+                platform: target.platform,
+                socialAccountId: target.socialAccountId,
+                mediaUrls: resolvedMediaUrls,
+                idempotencyKey: targetIdempotency,
+                fingerprint,
+                options: (target.platformOptions ?? {}) as Record<string, unknown>,
+              })
+            )
+          );
 
-        const outboxCmd = await tx.outboxCommand.create({
-          data: {
-            workspaceId,
-            publicationId: publication.id,
-            publishAttemptId: attempt.id,
-            commandType: 'SOCIAL_PUBLISH',
-            payload: payloadJson,
-            status: 'PENDING',
-            availableAt: scheduledAt ? new Date(scheduledAt) : new Date(),
-          },
-        });
+          const outboxCmd = await tx.outboxCommand.create({
+            data: {
+              workspaceId,
+              publicationId: publication.id,
+              publishAttemptId: attempt.id,
+              commandType: 'SOCIAL_PUBLISH',
+              payload: payloadJson,
+              status: 'PENDING',
+              availableAt: scheduledAt ? new Date(scheduledAt) : new Date(),
+            },
+          });
+          outboxCommandId = outboxCmd.id;
+        }
 
         // 6. If approval required, create Approval & ApprovalToken (§14)
         if (requiresApproval) {
@@ -257,7 +261,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           publicationId: publication.id,
           platform: target.platform,
           status: publication.status,
-          outboxCommandId: outboxCmd.id,
+          outboxCommandId,
         });
       }
 

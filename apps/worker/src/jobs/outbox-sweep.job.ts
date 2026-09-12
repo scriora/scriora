@@ -1,5 +1,6 @@
 import { prisma } from 'scriora-core';
 import { inngest } from '../inngest/client.js';
+import { findActionableOutboxCommands } from '../lib/publication-dispatch-guard.js';
 
 export const outboxSweepJob = inngest.createFunction(
   {
@@ -11,27 +12,9 @@ export const outboxSweepJob = inngest.createFunction(
     // Find actionable OutboxCommands:
     // 1. PENDING commands with availableAt <= now
     // 2. PROCESSING commands stuck for more than 10 minutes (updatedAt < tenMinutesAgo)
+    // Never dispatch publications still awaiting §14 approval or already cancelled.
     const staleCommands = await step.run('find-stale-outbox-commands', async () => {
-      const now = new Date();
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-
-      return prisma.outboxCommand.findMany({
-        where: {
-          attempts: { lt: 5 },
-          OR: [
-            {
-              status: 'PENDING',
-              availableAt: { lte: now },
-            },
-            {
-              status: 'PROCESSING',
-              updatedAt: { lt: tenMinutesAgo },
-            },
-          ],
-        },
-        take: 20,
-        select: { id: true },
-      });
+      return findActionableOutboxCommands(prisma);
     });
 
     if (staleCommands.length === 0) {

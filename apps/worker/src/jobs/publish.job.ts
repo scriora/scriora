@@ -1,6 +1,7 @@
 import { prisma } from 'scriora-core';
 import { PlatformError, platformRegistry, type SocialPlatformType } from 'scriora-social';
 import { inngest } from '../inngest/client.js';
+import { abortPublishIfBlocked } from '../lib/publication-dispatch-guard.js';
 import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
 let envelopeServiceInstance: SecretEnvelopeService | null = null;
@@ -57,6 +58,11 @@ export const publishJob = inngest.createFunction(
 
       return cmd;
     });
+
+    const blocked = abortPublishIfBlocked(outboxRecord.publication?.status);
+    if (blocked) {
+      return blocked;
+    }
 
     // Mark Outbox PROCESSING
     await step.run('claim-outbox', async () => {
