@@ -2,12 +2,12 @@ import { prisma } from 'scriora-core';
 import type { SocialPlatformType } from 'scriora-social';
 import { platformRegistry } from 'scriora-social';
 import { inngest } from '../inngest/client.js';
+import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 import {
   applyVerificationOutcome,
   probePublicationLive,
   resolveVerifyAccessToken,
 } from '../lib/verify-publication-state.js';
-import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
 
 let envelopeServiceInstance: SecretEnvelopeService | null = null;
 function getEnvelopeService(): SecretEnvelopeService {

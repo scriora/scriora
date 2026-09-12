@@ -3,6 +3,8 @@
  * UNKNOWN_EXTERNAL_STATE on a transient or unauthenticated probe failure.
  */
 
+import type { PrismaClient } from 'scriora-core';
+
 export type VerifyProbe =
   | { kind: 'live' }
   | { kind: 'not_live' }
@@ -17,22 +19,9 @@ export const STATUSES_ELIGIBLE_FOR_VERIFY_UNKNOWN = [
 ] as const;
 
 export type VerifyPublicationClient = {
-  publication: {
-    updateMany: (args: {
-      where: {
-        id: string;
-        status?: { in: readonly string[] } | { not: string };
-      };
-      data: { status: string };
-    }) => Promise<{ count: number }>;
-  };
-  publishAttempt: {
-    update: (args: {
-      where: { id: string };
-      data: { status: string; completedAt: Date };
-    }) => Promise<unknown>;
-  };
-  $transaction: (ops: unknown[]) => Promise<unknown>;
+  publication: Pick<PrismaClient['publication'], 'updateMany'>;
+  publishAttempt: Pick<PrismaClient['publishAttempt'], 'update'>;
+  $transaction: PrismaClient['$transaction'];
 };
 
 export type ApplyVerificationOutcome = {
@@ -93,20 +82,20 @@ export async function applyVerificationOutcome(
   }
 
   if (input.probe.kind === 'live') {
-    const ops: unknown[] = [
+    const ops = [
       db.publication.updateMany({
         where: { id: input.publicationId, status: { not: 'CANCELLED' } },
         data: { status: 'PUBLISHED' },
       }),
+      ...(input.latestAttemptId
+        ? [
+            db.publishAttempt.update({
+              where: { id: input.latestAttemptId },
+              data: { status: 'SUCCEEDED', completedAt: now },
+            }),
+          ]
+        : []),
     ];
-    if (input.latestAttemptId) {
-      ops.push(
-        db.publishAttempt.update({
-          where: { id: input.latestAttemptId },
-          data: { status: 'SUCCEEDED', completedAt: now },
-        })
-      );
-    }
     await db.$transaction(ops);
     return { outcome: 'CONFIRMED_LIVE', publicationUpdated: true };
   }
@@ -114,7 +103,7 @@ export async function applyVerificationOutcome(
   const unknownUpdate = db.publication.updateMany({
     where: {
       id: input.publicationId,
-      status: { in: STATUSES_ELIGIBLE_FOR_VERIFY_UNKNOWN },
+      status: { in: [...STATUSES_ELIGIBLE_FOR_VERIFY_UNKNOWN] },
     },
     data: { status: 'UNKNOWN_EXTERNAL_STATE' },
   });

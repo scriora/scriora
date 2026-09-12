@@ -71,11 +71,13 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       bodyKey,
     });
     if (!resolvedKey.ok) {
-      return reply.status(400).send(
-        err('VALIDATION_ERROR', 'VALIDATION_ERROR', resolvedKey.message, request.id, false, [
-          { field: 'Idempotency-Key', message: resolvedKey.message },
-        ])
-      );
+      return reply
+        .status(400)
+        .send(
+          err('VALIDATION_ERROR', 'VALIDATION_ERROR', resolvedKey.message, request.id, false, [
+            { field: 'Idempotency-Key', message: resolvedKey.message },
+          ])
+        );
     }
     const idempotencyKey = resolvedKey.key;
     const workspaceId = request.workspace!.id;

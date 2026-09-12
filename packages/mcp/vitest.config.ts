@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
-      'scriora-agent': path.resolve(__dirname, '../agent/src/index.ts'),
+      'scriora-agent': path.resolve(import.meta.dirname, '../agent/src/index.ts'),
     },
   },
   test: {

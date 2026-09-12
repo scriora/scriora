@@ -131,7 +131,10 @@ server.tool(
   'scriora_list_social_accounts',
   LIST_SOCIAL_ACCOUNTS_DESCRIPTION,
   {
-    workspaceId: z.string().uuid().describe('The Scriora workspace UUID (must match the API key binding)'),
+    workspaceId: z
+      .string()
+      .uuid()
+      .describe('The Scriora workspace UUID (must match the API key binding)'),
   },
   async (args) => {
     const parsed = ListSocialAccountsInputSchema.safeParse(args);

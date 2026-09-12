@@ -84,7 +84,7 @@ export async function authorizeWorkspaceScopedTool(
   const env = input.env ?? process.env;
   const rawKey = resolveRawApiKey(input);
 
-  if (!rawKey || !rawKey.startsWith('sk_')) {
+  if (!rawKey?.startsWith('sk_')) {
     return {
       ok: false,
       error: {
@@ -159,7 +159,8 @@ export async function authorizeWorkspaceScopedTool(
         ok: false,
         error: {
           code: 'MCP_HMAC_REQUIRED',
-          message: 'MCP_SIGNING_SECRET is set; provide MCP_REQUEST_SIGNATURE (HMAC-SHA256 of toolName:workspaceId)',
+          message:
+            'MCP_SIGNING_SECRET is set; provide MCP_REQUEST_SIGNATURE (HMAC-SHA256 of toolName:workspaceId)',
         },
       };
     }
