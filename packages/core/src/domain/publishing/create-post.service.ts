@@ -14,6 +14,7 @@ import crypto from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { PrismaClient } from '../../db/client.js';
 import type { MediaRef, PublishTarget } from '../../schemas/publish.schema.js';
+import { publicationIdempotencyKeys } from './idempotency.js';
 
 const APPROVAL_RAW_TOKEN_BYTES = 16;
 const APPROVAL_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
@@ -173,7 +174,12 @@ export async function createUnifiedPost(
   const existingPublication = await db.publication.findFirst({
     where: {
       workspaceId,
-      idempotencyKey: { startsWith: idempotencyKey },
+      idempotencyKey: {
+        in: publicationIdempotencyKeys(
+          idempotencyKey,
+          targets.map((target) => target.socialAccountId)
+        ),
+      },
       createdAt: { gt: new Date(Date.now() - IDEMPOTENCY_WINDOW_MS) },
     },
   });

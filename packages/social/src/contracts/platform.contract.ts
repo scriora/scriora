@@ -123,7 +123,7 @@ export interface PlatformAdapter {
   readonly platform: SocialPlatformType;
   getCapabilities(): PlatformCapabilities;
   publish(request: PublishRequest): Promise<PublishResult>;
-  verify(externalPostId: string): Promise<boolean>;
+  verify(externalPostId: string, accessToken?: string): Promise<boolean>;
   getAuthorizationUrl?(params: OAuthInitParams): Promise<OAuthInitResult>;
   exchangeCodeForTokens?(params: OAuthCallbackParams): Promise<TokenExchangeResult>;
   refreshAccessToken?(

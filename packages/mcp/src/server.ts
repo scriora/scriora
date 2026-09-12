@@ -4,9 +4,11 @@
 // INVARIANT: This server CANNOT bypass the Human Approval Gate.
 //            Every action that requires approval must go through
 //            the approval flow — never directly to execution.
-// AUTH: stdio-trusted process. There is no per-request API key / HMAC check.
-//       scriora_create_post validates that workspaceId exists and honors
-//       workspace.requiresApproval via createUnifiedPost (same as POST /v1/posts).
+// AUTH: workspace-scoped tools require a workspace API key (SCRIORA_API_KEY)
+//       bound to workspaceId, plus membership. Optional HMAC when
+//       MCP_SIGNING_SECRET is set. X-Workspace-Id is not authentication.
+//       scriora_create_post also applies the agent autonomy gate:
+//       publication.publish always requires human approval.
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -14,7 +16,6 @@ import {
   crossPostOptimizer,
   defaultDateTimeService,
   type PlatformTarget,
-  prisma,
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
@@ -24,6 +25,12 @@ import {
   executeCreatePost,
   formatCreatePostToolResponse,
 } from './tools/create-post.js';
+import {
+  executeListSocialAccounts,
+  formatListSocialAccountsResponse,
+  LIST_SOCIAL_ACCOUNTS_DESCRIPTION,
+  ListSocialAccountsInputSchema,
+} from './tools/list-accounts.js';
 
 const server = new McpServer({
   name: 'scriora-mcp',
@@ -122,47 +129,32 @@ server.tool(
 // ── Tool 3: scriora_list_social_accounts ─────────────────────────────────────
 server.tool(
   'scriora_list_social_accounts',
-  'Lists all connected social accounts in a workspace, including individual Facebook Pages, Instagram Business profiles, and Threads accounts.',
+  LIST_SOCIAL_ACCOUNTS_DESCRIPTION,
   {
-    workspaceId: z.string().uuid().describe('The Scriora workspace UUID'),
+    workspaceId: z
+      .string()
+      .uuid()
+      .describe('The Scriora workspace UUID (must match the API key binding)'),
   },
-  async ({ workspaceId }) => {
-    const accounts = await prisma.socialAccount.findMany({
-      where: { workspaceId },
-      select: {
-        id: true,
-        platform: true,
-        accountName: true,
-        externalAccountId: true,
-        status: true,
-        capabilities: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
-
-    return {
-      content: [
-        {
-          type: 'text',
-          text: JSON.stringify(
-            {
-              workspaceId,
-              accountsCount: accounts.length,
-              accounts,
-            },
-            null,
-            2
-          ),
+  async (args) => {
+    const parsed = ListSocialAccountsInputSchema.safeParse(args);
+    if (!parsed.success) {
+      return formatListSocialAccountsResponse({
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues.map((i) => i.message).join('; '),
         },
-      ],
-    };
+      });
+    }
+    const result = await executeListSocialAccounts(parsed.data);
+    return formatListSocialAccountsResponse(result);
   }
 );
 
 // ── Tool 4: scriora_create_post ──────────────────────────────────────────────
-// Stdio-trusted: no API-key gate. Workspace must exist; requiresApproval is honored
-// via createUnifiedPost (same path as POST /v1/posts).
+// API key + membership + posts:write. Autonomy gate forces approval hold for
+// publication.publish (ALWAYS_REQUIRES_APPROVAL).
 server.tool(
   'scriora_create_post',
   CREATE_POST_TOOL_DESCRIPTION,

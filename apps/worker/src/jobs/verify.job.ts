@@ -2,6 +2,20 @@ import { prisma } from 'scriora-core';
 import type { SocialPlatformType } from 'scriora-social';
 import { platformRegistry } from 'scriora-social';
 import { inngest } from '../inngest/client.js';
+import { SecretEnvelopeService } from '../lib/secret-envelope.service.js';
+import {
+  applyVerificationOutcome,
+  probePublicationLive,
+  resolveVerifyAccessToken,
+} from '../lib/verify-publication-state.js';
+
+let envelopeServiceInstance: SecretEnvelopeService | null = null;
+function getEnvelopeService(): SecretEnvelopeService {
+  if (!envelopeServiceInstance) {
+    envelopeServiceInstance = new SecretEnvelopeService();
+  }
+  return envelopeServiceInstance;
+}
 
 export const verifyJob = inngest.createFunction(
   {
@@ -29,68 +43,58 @@ export const verifyJob = inngest.createFunction(
 
     const { publicationId, externalPostId, platform } = rawData;
 
-    const isVerified = await step.run('verify-with-platform', async () => {
+    const probe = await step.run('verify-with-platform', async () => {
+      const publication = await prisma.publication.findUnique({
+        where: { id: publicationId },
+        select: {
+          socialAccount: {
+            select: {
+              secretEnvelopes: {
+                take: 1,
+                select: { envelopeData: true },
+              },
+            },
+          },
+        },
+      });
+
+      const envelopeData = publication?.socialAccount?.secretEnvelopes?.[0]?.envelopeData;
+      let accessToken: string | undefined;
+      if (envelopeData) {
+        try {
+          accessToken = resolveVerifyAccessToken({
+            envelopeData,
+            decrypt: (data) => getEnvelopeService().decrypt(data as never),
+          });
+        } catch {
+          accessToken = undefined;
+        }
+      }
+
       const platformType = platform as SocialPlatformType;
-      if (!platformRegistry.has(platformType)) {
-        return false;
-      }
-      try {
-        const adapter = platformRegistry.get(platformType);
-        return await adapter.verify(externalPostId);
-      } catch {
-        return false;
-      }
+      return probePublicationLive({
+        externalPostId,
+        platform: platformType,
+        accessToken,
+        hasAdapter: (candidate) => platformRegistry.has(candidate as SocialPlatformType),
+        getAdapter: (candidate) => platformRegistry.get(candidate as SocialPlatformType),
+      });
     });
 
-    await step.run('update-verification-state', async () => {
+    const applied = await step.run('update-verification-state', async () => {
       const latestAttempt = await prisma.publishAttempt.findFirst({
         where: { publicationId },
         orderBy: { attemptNumber: 'desc' },
+        select: { id: true },
       });
 
-      if (isVerified) {
-        await prisma.$transaction([
-          prisma.publication.update({
-            where: { id: publicationId },
-            data: {
-              status: 'PUBLISHED',
-            },
-          }),
-          ...(latestAttempt
-            ? [
-                prisma.publishAttempt.update({
-                  where: { id: latestAttempt.id },
-                  data: {
-                    status: 'SUCCEEDED',
-                    completedAt: new Date(),
-                  },
-                }),
-              ]
-            : []),
-        ]);
-      } else {
-        await prisma.$transaction([
-          prisma.publication.update({
-            where: { id: publicationId },
-            data: {
-              status: 'UNKNOWN_EXTERNAL_STATE',
-            },
-          }),
-          ...(latestAttempt
-            ? [
-                prisma.publishAttempt.update({
-                  where: { id: latestAttempt.id },
-                  data: {
-                    status: 'UNKNOWN_EXTERNAL_STATE',
-                    completedAt: new Date(),
-                  },
-                }),
-              ]
-            : []),
-        ]);
-      }
+      return applyVerificationOutcome(prisma, {
+        publicationId,
+        probe,
+        latestAttemptId: latestAttempt?.id,
+      });
     });
 
-    return { publicationId, isVerified };
+    return { publicationId, probe, applied };
   }
 );

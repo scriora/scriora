@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma, type WorkspaceRole } from 'scriora-core';
 import { z } from 'zod';
+import { rejectApiKeyWorkspaceMismatch } from '../lib/rbac.js';
 import { err } from '../lib/response.js';
 
 declare module 'fastify' {
@@ -64,6 +65,10 @@ export async function verifyWorkspace(request: FastifyRequest, reply: FastifyRep
           request.id
         )
       );
+    return;
+  }
+
+  if (await rejectApiKeyWorkspaceMismatch(request, reply, targetWorkspaceId)) {
     return;
   }
 

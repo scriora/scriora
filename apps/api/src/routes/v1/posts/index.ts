@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   adaptiveScheduleService,
@@ -11,13 +10,17 @@ import {
   type PlatformTarget,
   PublishPayloadSchema,
   prisma,
+  resolveRequestIdempotencyKey,
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
 import { maybeSendTelegramApprovalRequests } from '../../../lib/approval-delivery.js';
+import { API_KEY_SCOPE, requireApiKeyScope, requireWorkspaceWrite } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
+
+const requirePostWrite = [requireWorkspaceWrite, requireApiKeyScope(API_KEY_SCOPE.POSTS_WRITE)];
 
 const PostParamsSchema = z.object({
   postId: z.string().uuid('Invalid postId: must be a valid UUID'),
@@ -40,7 +43,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.addHook('preHandler', verifyWorkspace);
 
   // 1. POST /v1/posts (Unified Gateway — 202 Accepted per §7.3 & §8.4)
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { preHandler: requirePostWrite }, async (request, reply) => {
     const parseResult = PublishPayloadSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send(
@@ -63,8 +66,20 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       scheduledAt,
       idempotencyKey: bodyKey,
     } = parseResult.data;
-    const headerKey = request.headers['idempotency-key'] as string | undefined;
-    const idempotencyKey = headerKey || bodyKey || crypto.randomUUID();
+    const resolvedKey = resolveRequestIdempotencyKey({
+      header: request.headers['idempotency-key'],
+      bodyKey,
+    });
+    if (!resolvedKey.ok) {
+      return reply
+        .status(400)
+        .send(
+          err('VALIDATION_ERROR', 'VALIDATION_ERROR', resolvedKey.message, request.id, false, [
+            { field: 'Idempotency-Key', message: resolvedKey.message },
+          ])
+        );
+    }
+    const idempotencyKey = resolvedKey.key;
     const workspaceId = request.workspace!.id;
     const userId = request.authContext!.userId;
     const requiresApproval = request.workspace!.requiresApproval;
@@ -293,7 +308,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // 5. POST /v1/posts/:postId/cancel
-  fastify.post('/:postId/cancel', async (request, reply) => {
+  fastify.post('/:postId/cancel', { preHandler: requirePostWrite }, async (request, reply) => {
     const paramResult = PostParamsSchema.safeParse(request.params);
     if (!paramResult.success) {
       return reply
@@ -355,7 +370,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // 6. POST /v1/posts/optimize-cross-post (Cross-platform intelligence & adaptation heuristics)
-  fastify.post('/optimize-cross-post', async (request, reply) => {
+  fastify.post('/optimize-cross-post', { preHandler: requirePostWrite }, async (request, reply) => {
     const OptimizeSchema = z.object({
       body: z.string().min(1, 'Post body cannot be empty'),
       mediaUrls: z.array(z.string().url()).optional(),

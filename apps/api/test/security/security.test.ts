@@ -271,10 +271,21 @@ describe('Security & Gateway Robustness Tests', () => {
     const app = buildApp();
     await app.ready();
 
-    // 1. Missing workspaceId in /v1/connect/:platform returns 400
+    // 1. Unauthenticated initiate is rejected; authenticated missing workspaceId returns 400
+    const resUnauth = await app.inject({
+      method: 'GET',
+      url: '/v1/connect/linkedin',
+    });
+    expect(resUnauth.statusCode).toBe(401);
+    expect(JSON.parse(resUnauth.body).error.category).toBe('AUTHENTICATION_ERROR');
+
+    const token = app.jwt.sign({ sub: 'user-123' });
     const resNoWs = await app.inject({
       method: 'GET',
       url: '/v1/connect/linkedin',
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
     });
     expect(resNoWs.statusCode).toBe(400);
     expect(JSON.parse(resNoWs.body).error.code).toBe('MISSING_WORKSPACE_ID');

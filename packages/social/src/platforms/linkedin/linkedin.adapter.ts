@@ -1,5 +1,9 @@
-import { promises as fs } from 'node:fs';
 import axios from 'axios';
+import {
+  assertSafeRemoteUrl,
+  fetchSafeRemoteUrl,
+  UnsafeRemoteUrlError,
+} from 'scriora-core/security';
 import type {
   OAuthCallbackParams,
   OAuthInitParams,
@@ -220,6 +224,9 @@ export class LinkedInAdapter implements PlatformAdapter {
         },
       };
     } catch (err: unknown) {
+      if (err instanceof PlatformError) {
+        throw err;
+      }
       if (axios.isAxiosError(err)) {
         const status = err.response?.status;
         const retryable = status === 429 || (status !== undefined && status >= 500 && status < 600);
@@ -250,6 +257,12 @@ export class LinkedInAdapter implements PlatformAdapter {
     authorUrn: string,
     accessToken: string
   ): Promise<string> {
+    if (imageUrl.startsWith('urn:li:digitalmediaAsset:')) {
+      return imageUrl;
+    }
+
+    this.assertAllowlistedMediaUrl(imageUrl);
+
     const registerResponse = await axios.post(
       'https://api.linkedin.com/v2/assets?action=registerUpload',
       {
@@ -287,41 +300,35 @@ export class LinkedInAdapter implements PlatformAdapter {
       });
     }
 
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-      const contentType = (imgRes.headers['content-type'] as string) || 'image/png';
-      await axios.post(uploadUrl, imgRes.data, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': contentType,
-        },
-      });
-    } else if (imageUrl.startsWith('urn:li:digitalmediaAsset:')) {
-      return imageUrl;
-    } else {
-      try {
-        const fileBuffer = await fs.readFile(imageUrl);
-        const ext = imageUrl.split('.').pop()?.toLowerCase();
-        const contentType =
-          ext === 'jpg' || ext === 'jpeg'
-            ? 'image/jpeg'
-            : ext === 'webp'
-              ? 'image/webp'
-              : 'image/png';
-        await axios.post(uploadUrl, fileBuffer, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': contentType,
-          },
-        });
-      } catch (fsErr) {
+    let fileBuffer: Buffer;
+    let contentType = 'image/png';
+    try {
+      const downloaded = await fetchSafeRemoteUrl(imageUrl);
+      fileBuffer = downloaded.buffer;
+      contentType = downloaded.contentType || 'image/png';
+    } catch (err: unknown) {
+      if (err instanceof UnsafeRemoteUrlError) {
         throw new PlatformError({
-          message: `Unsupported image URL or failed to read local file: ${imageUrl} (${fsErr instanceof Error ? fsErr.message : String(fsErr)})`,
+          message: err.message,
           code: 'INVALID_MEDIA_URL',
+          category: 'VALIDATION',
           retryable: false,
         });
       }
+      throw new PlatformError({
+        message: `Failed to download LinkedIn image: ${err instanceof Error ? err.message : String(err)}`,
+        code: 'INVALID_MEDIA_URL',
+        category: 'VALIDATION',
+        retryable: false,
+      });
     }
+
+    await axios.post(uploadUrl, fileBuffer, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': contentType,
+      },
+    });
 
     return assetUrn;
   }
@@ -334,6 +341,8 @@ export class LinkedInAdapter implements PlatformAdapter {
     if (documentUrl.startsWith('urn:li:document:')) {
       return documentUrl;
     }
+
+    this.assertAllowlistedMediaUrl(documentUrl);
 
     try {
       const initRes = await axios.post(
@@ -365,11 +374,19 @@ export class LinkedInAdapter implements PlatformAdapter {
       }
 
       let fileBuffer: Buffer;
-      if (documentUrl.startsWith('http://') || documentUrl.startsWith('https://')) {
-        const resp = await axios.get(documentUrl, { responseType: 'arraybuffer' });
-        fileBuffer = Buffer.from(resp.data);
-      } else {
-        fileBuffer = await fs.readFile(documentUrl);
+      try {
+        const downloaded = await fetchSafeRemoteUrl(documentUrl);
+        fileBuffer = downloaded.buffer;
+      } catch (err: unknown) {
+        if (err instanceof UnsafeRemoteUrlError) {
+          throw new PlatformError({
+            message: err.message,
+            code: 'INVALID_MEDIA_URL',
+            category: 'VALIDATION',
+            retryable: false,
+          });
+        }
+        throw err;
       }
 
       await axios.put(uploadUrl, fileBuffer, {
@@ -482,6 +499,19 @@ export class LinkedInAdapter implements PlatformAdapter {
       return response.status === 200 || response.status === 204;
     } catch {
       return false;
+    }
+  }
+
+  private assertAllowlistedMediaUrl(url: string): void {
+    try {
+      assertSafeRemoteUrl(url);
+    } catch (err: unknown) {
+      throw new PlatformError({
+        message: err instanceof Error ? err.message : 'Media URL is not allowed',
+        code: 'INVALID_MEDIA_URL',
+        category: 'VALIDATION',
+        retryable: false,
+      });
     }
   }
 }

@@ -29,6 +29,8 @@ TELEGRAM_WORKSPACE_ID="11111111-1111-4111-8111-111111111111"
 
 Only messages and button clicks originating from `TELEGRAM_ADMIN_CHAT_ID` are processed. All unauthorized users receive an access-denied notice.
 
+`TELEGRAM_WEBHOOK_SECRET` is required to accept `POST /v1/webhooks/telegram`. Telegram sends it as `X-Telegram-Bot-Api-Secret-Token`. If the bot token is configured and this secret is unset or blank, webhook posts are rejected (fail-closed).
+
 If `TELEGRAM_ADMIN_CHAT_ID` is unset, every C2 command — including `/post` — is denied. There is no development allow-all fallback.
 
 If more than one workspace exists, set `TELEGRAM_WORKSPACE_ID`. Telegram C2 will not silently post to the oldest workspace.

@@ -1,11 +1,20 @@
 import axios from 'axios';
+import { fetchSafeRemoteUrl } from 'scriora-core/security';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockYouTubeAdapter } from '../../src/platforms/youtube/mock.adapter.js';
 import { YouTubeAdapter } from '../../src/platforms/youtube/youtube.adapter.js';
 import { YouTubeOAuth } from '../../src/platforms/youtube/youtube.oauth.js';
 
 vi.mock('axios');
+vi.mock('scriora-core/security', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('scriora-core/security')>();
+  return {
+    ...actual,
+    fetchSafeRemoteUrl: vi.fn(actual.fetchSafeRemoteUrl),
+  };
+});
 const mockedAxios = vi.mocked(axios, true);
+const mockedFetchSafeRemoteUrl = vi.mocked(fetchSafeRemoteUrl);
 
 describe('YouTube Adapter & OAuth Suite', () => {
   const clientId = 'yt_test_client_id';
@@ -59,7 +68,8 @@ describe('YouTube Adapter & OAuth Suite', () => {
           refresh_token: '1//google_permanent_refresh_token_xyz',
           expires_in: 3600,
           token_type: 'Bearer',
-          scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
+          scope:
+            'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
         },
       });
 
@@ -112,6 +122,44 @@ describe('YouTube Adapter & OAuth Suite', () => {
   describe('Publishing', () => {
     const fakeToken = 'ya29.test_token';
 
+    it('rejects file:// and private media URLs before downloading', async () => {
+      await expect(
+        adapter.publish(
+          {
+            workspaceId: '11111111-1111-4111-8111-111111111111',
+            accountId: 'UC_test_channel_id',
+            text: 'Should not fetch local files',
+            mediaUrls: ['file:///etc/passwd'],
+            idempotencyKey: 'op-yt-lfi',
+            fingerprint: 'a'.repeat(64),
+            metadata: {},
+          },
+          fakeToken
+        )
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+
+      await expect(
+        adapter.publish(
+          {
+            workspaceId: '11111111-1111-4111-8111-111111111111',
+            accountId: 'UC_test_channel_id',
+            text: 'Should not fetch metadata IPs',
+            mediaUrls: ['https://169.254.169.254/latest/meta-data'],
+            idempotencyKey: 'op-yt-ssrf',
+            fingerprint: 'b'.repeat(64),
+            metadata: {},
+          },
+          fakeToken
+        )
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
     it('throws VALIDATION_ERROR when mediaUrls is empty', async () => {
       await expect(
         adapter.publish(
@@ -131,7 +179,8 @@ describe('YouTube Adapter & OAuth Suite', () => {
 
     it('publishes standard long-form video via resumable upload session', async () => {
       const videoDownloadUrl = 'https://cdn.example.com/videos/masterclass.mp4';
-      const sessionLocation = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_123';
+      const sessionLocation =
+        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_123';
 
       // 1. Session initiation (POST)
       mockedAxios.post.mockResolvedValueOnce({
@@ -139,9 +188,11 @@ describe('YouTube Adapter & OAuth Suite', () => {
         data: {},
       });
 
-      // 2. Video buffer download (GET)
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('fake-video-binary-data-stream'),
+      // 2. Video buffer download (allowlisted https)
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('fake-video-binary-data-stream'),
+        contentType: 'video/mp4',
+        statusCode: 200,
       });
 
       // 3. Binary chunk upload to session location (PUT)
@@ -197,7 +248,8 @@ describe('YouTube Adapter & OAuth Suite', () => {
 
     it('publishes YouTube Shorts and formats URL as shorts format with #Shorts tag', async () => {
       const videoDownloadUrl = 'https://cdn.example.com/videos/quick-tip.mp4';
-      const sessionLocation = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_shorts';
+      const sessionLocation =
+        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_shorts';
 
       // 1. Session initiation
       mockedAxios.post.mockResolvedValueOnce({
@@ -206,8 +258,10 @@ describe('YouTube Adapter & OAuth Suite', () => {
       });
 
       // 2. Video buffer download
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('fake-shorts-binary-data'),
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('fake-shorts-binary-data'),
+        contentType: 'video/mp4',
+        statusCode: 200,
       });
 
       // 3. PUT video buffer
@@ -255,7 +309,8 @@ describe('YouTube Adapter & OAuth Suite', () => {
     it('uploads custom thumbnail when thumbnailUrl is provided', async () => {
       const videoDownloadUrl = 'https://cdn.example.com/videos/video.mp4';
       const thumbnailCoverUrl = 'https://cdn.example.com/thumbs/cover.jpg';
-      const sessionLocation = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_thumb';
+      const sessionLocation =
+        'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&upload_id=sess_thumb';
 
       // 1. Session initiation
       mockedAxios.post.mockResolvedValueOnce({
@@ -264,8 +319,10 @@ describe('YouTube Adapter & OAuth Suite', () => {
       });
 
       // 2. Video buffer download
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('fake-video-binary'),
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('fake-video-binary'),
+        contentType: 'video/mp4',
+        statusCode: 200,
       });
 
       // 3. PUT video buffer
@@ -278,8 +335,10 @@ describe('YouTube Adapter & OAuth Suite', () => {
       });
 
       // 4. Thumbnail buffer download
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('fake-thumbnail-jpeg-binary'),
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('fake-thumbnail-jpeg-binary'),
+        contentType: 'image/jpeg',
+        statusCode: 200,
       });
 
       // 5. Thumbnail upload (POST /thumbnails/set)
@@ -401,8 +460,10 @@ describe('YouTube Adapter & OAuth Suite', () => {
       });
 
       // 2. Video download
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('mock video bytes'),
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('mock video bytes'),
+        contentType: 'video/mp4',
+        statusCode: 200,
       });
 
       // 3. Resumable binary upload
@@ -452,8 +513,10 @@ describe('YouTube Adapter & OAuth Suite', () => {
       });
 
       // 2. Video download
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('mock video bytes'),
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('mock video bytes'),
+        contentType: 'video/mp4',
+        statusCode: 200,
       });
 
       // 3. Resumable binary upload

@@ -1,13 +1,16 @@
 /**
  * scriora_create_post — uses the same createUnifiedPost path as POST /v1/posts.
  *
- * Auth: this MCP server is stdio-trusted today (no per-request API key / HMAC).
- * The caller can name any workspaceId; we only validate that the workspace
- * exists and then honor workspace.requiresApproval. Do not treat this as
- * tenant-isolated HTTP auth.
+ * Auth: workspace API key (SCRIORA_API_KEY) plus membership. workspaceId must
+ * match the key binding. Optional HMAC when MCP_SIGNING_SECRET is set.
+ *
+ * Autonomy: publication.publish is ALWAYS_REQUIRES_APPROVAL, so MCP cannot
+ * queue a sweepable outbox without the Classic approval hold — even when the
+ * workspace is AUTONOMOUS / requiresApproval=false.
  */
 
 import crypto from 'node:crypto';
+import { evaluateAutonomyGate } from 'scriora-agent';
 import {
   CreatePostError,
   type CreateUnifiedPostResult,
@@ -20,6 +23,7 @@ import {
 } from 'scriora-core';
 import { z } from 'zod';
 import { maybeSendTelegramApprovalRequests } from '../lib/approval-delivery.js';
+import { authorizeWorkspaceScopedTool } from '../lib/mcp-auth.js';
 
 export const CreatePostToolInputSchema = z.object({
   workspaceId: z.string().uuid(),
@@ -62,6 +66,11 @@ export const CreatePostToolInputSchema = z.object({
 
 export type CreatePostToolInput = z.infer<typeof CreatePostToolInputSchema>;
 
+export interface CreatePostAuthInput {
+  apiKey?: string | undefined;
+  signature?: string | undefined;
+}
+
 export interface CreatePostToolSuccess {
   ok: true;
   message: string;
@@ -94,10 +103,10 @@ export type CreatePostToolResult = CreatePostToolSuccess | CreatePostToolFailure
 
 export const CREATE_POST_TOOL_DESCRIPTION =
   'Creates a social post through the same path as POST /v1/posts: publications, ' +
-  'outbox (only when the workspace does not require approval), and §14 approval ' +
-  'tokens when workspace.requiresApproval is true. Does not claim STAGED or ' +
-  'published unless publications/outbox actually exist. Stdio-trusted: validates ' +
-  'that workspaceId exists and honors requiresApproval; does not enforce HTTP API keys.';
+  'outbox (only after human approval), and §14 approval tokens. Requires a ' +
+  'workspace API key bound to workspaceId (SCRIORA_API_KEY) with posts:write. ' +
+  'publication.publish always requires approval on the MCP/agent path — ' +
+  'AUTONOMOUS mode is not a bypass. X-Workspace-Id is not authentication.';
 
 function mapTargetsToPublishTargets(targets: CreatePostToolInput['targets']): PublishTarget[] {
   return targets.map((target) => {
@@ -123,9 +132,25 @@ function mapTargetsToPublishTargets(targets: CreatePostToolInput['targets']): Pu
   });
 }
 
-export async function executeCreatePost(input: CreatePostToolInput): Promise<CreatePostToolResult> {
+export async function executeCreatePost(
+  input: CreatePostToolInput,
+  authInput: CreatePostAuthInput = {}
+): Promise<CreatePostToolResult> {
+  const auth = await authorizeWorkspaceScopedTool({
+    workspaceId: input.workspaceId,
+    toolName: 'scriora_create_post',
+    requiredScope: 'posts:write',
+    requireWriteRole: true,
+    apiKey: authInput.apiKey,
+    signature: authInput.signature,
+  });
+
+  if (!auth.ok) {
+    return { ok: false, error: auth.error };
+  }
+
   const workspace = await prisma.workspace.findUnique({
-    where: { id: input.workspaceId },
+    where: { id: auth.workspaceId },
     select: {
       id: true,
       requiresApproval: true,
@@ -143,14 +168,29 @@ export async function executeCreatePost(input: CreatePostToolInput): Promise<Cre
     };
   }
 
+  const gate = evaluateAutonomyGate({
+    action: 'publication.publish',
+    workspaceRequiresApproval: workspace.requiresApproval,
+  });
+
+  if (!gate.allowed) {
+    return {
+      ok: false,
+      error: {
+        code: gate.code,
+        message: gate.reason,
+      },
+    };
+  }
+
   const idempotencyKey = input.idempotencyKey ?? crypto.randomUUID();
 
   let result: CreateUnifiedPostResult;
   try {
     result = await createUnifiedPost(prisma, {
       workspaceId: workspace.id,
-      createdByUserId: workspace.ownerUserId,
-      requiresApproval: workspace.requiresApproval,
+      createdByUserId: auth.userId,
+      requiresApproval: gate.requiresApproval,
       body: input.body,
       targets: mapTargetsToPublishTargets(input.targets),
       ...(input.mediaUrls ? { mediaUrls: input.mediaUrls } : {}),
@@ -185,7 +225,7 @@ export async function executeCreatePost(input: CreatePostToolInput): Promise<Cre
       ],
       publicationCount: 1,
       outboxCommandCount: 0,
-      requiresApproval: workspace.requiresApproval,
+      requiresApproval: gate.requiresApproval,
       scheduledAt: input.scheduledAt ?? null,
       status: result.status,
     };

@@ -1,6 +1,6 @@
 // packages/media/src/processors/pdf/pdf-carousel.generator.ts
-import { promises as fs } from 'node:fs';
 import { PDFDocument, type PDFImage } from 'pdf-lib';
+import { fetchSafeRemoteUrl, UnsafeRemoteUrlError } from 'scriora-core/security';
 import sharp from 'sharp';
 import {
   type CarouselAspectRatio,
@@ -37,7 +37,7 @@ export class PdfCarouselGenerator {
   /**
    * Generates a standardized multi-page PDF Carousel from an array of image sources.
    *
-   * @param slides - Array of image Buffers, Uint8Arrays, file paths, or remote image URLs.
+   * @param slides - Array of image Buffers, Uint8Arrays, or allowlisted https image URLs.
    * @param options - Carousel options (aspect ratio, title, metadata, fit).
    * @returns GeneratedCarousel containing PDF Buffer, metadata, page count, and dimensions.
    */
@@ -236,23 +236,16 @@ export class PdfCarouselGenerator {
       return Buffer.from(input);
     }
     if (typeof input === 'string') {
-      if (input.startsWith('http://') || input.startsWith('https://')) {
-        const res = await fetch(input);
-        if (!res.ok) {
-          throw new PdfCarouselError(
-            `Failed to fetch remote slide image from ${input} (HTTP ${res.status})`,
-            'DOWNLOAD_FAILED'
-          );
-        }
-        const arrayBuf = await res.arrayBuffer();
-        return Buffer.from(arrayBuf);
-      }
       try {
-        return await fs.readFile(input);
+        const downloaded = await fetchSafeRemoteUrl(input);
+        return downloaded.buffer;
       } catch (err: unknown) {
+        if (err instanceof UnsafeRemoteUrlError) {
+          throw new PdfCarouselError(err.message, err.code);
+        }
         throw new PdfCarouselError(
-          `Failed to read local slide image at path ${input}: ${err instanceof Error ? err.message : String(err)}`,
-          'FILE_READ_FAILED'
+          `Failed to fetch remote slide image: ${err instanceof Error ? err.message : String(err)}`,
+          'DOWNLOAD_FAILED'
         );
       }
     }

@@ -1,10 +1,19 @@
 import axios from 'axios';
+import { fetchSafeRemoteUrl } from 'scriora-core/security';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LinkedInAdapter } from '../../src/platforms/linkedin/linkedin.adapter.js';
 import { LinkedInOAuth } from '../../src/platforms/linkedin/linkedin.oauth.js';
 
 vi.mock('axios');
+vi.mock('scriora-core/security', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('scriora-core/security')>();
+  return {
+    ...actual,
+    fetchSafeRemoteUrl: vi.fn(actual.fetchSafeRemoteUrl),
+  };
+});
 const mockedAxios = vi.mocked(axios, true);
+const mockedFetchSafeRemoteUrl = vi.mocked(fetchSafeRemoteUrl);
 
 describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
   const clientId = 'test_li_client_id';
@@ -170,9 +179,10 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
           },
         },
       });
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('img1'),
-        headers: { 'content-type': 'image/jpeg' },
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('img1'),
+        contentType: 'image/jpeg',
+        statusCode: 200,
       });
       mockedAxios.post.mockResolvedValueOnce({ status: 201 });
 
@@ -189,9 +199,10 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
           },
         },
       });
-      mockedAxios.get.mockResolvedValueOnce({
-        data: Buffer.from('img2'),
-        headers: { 'content-type': 'image/jpeg' },
+      mockedFetchSafeRemoteUrl.mockResolvedValueOnce({
+        buffer: Buffer.from('img2'),
+        contentType: 'image/jpeg',
+        statusCode: 200,
       });
       mockedAxios.post.mockResolvedValueOnce({ status: 201 });
 
@@ -356,6 +367,38 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
           },
         },
       });
+    });
+
+    it('rejects file:// and local path media URLs', async () => {
+      await expect(
+        adapter.publish({
+          workspaceId: 'ws-123',
+          accountId: 'person_123',
+          text: 'Should not read local files',
+          mediaUrls: ['file:///etc/passwd'],
+          idempotencyKey: 'idemp-lfi',
+          fingerprint: 'fp-lfi',
+          metadata: { accessToken: 'valid_access_token' },
+        })
+      ).rejects.toMatchObject({
+        code: 'INVALID_MEDIA_URL',
+      });
+
+      await expect(
+        adapter.publish({
+          workspaceId: 'ws-123',
+          accountId: 'person_123',
+          text: 'Should not read filesystem paths',
+          mediaUrls: ['/etc/passwd'],
+          idempotencyKey: 'idemp-path',
+          fingerprint: 'fp-path',
+          metadata: { accessToken: 'valid_access_token' },
+        })
+      ).rejects.toMatchObject({
+        code: 'INVALID_MEDIA_URL',
+      });
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
     });
 
     it('handles 429 Rate Limit error gracefully with retryAfterMs', async () => {

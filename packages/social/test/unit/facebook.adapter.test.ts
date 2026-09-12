@@ -306,6 +306,52 @@ describe('Facebook Adapter & OAuth Suite', () => {
       );
     });
 
+    it('binds pageId to the connected account and rejects a client override', async () => {
+      await expect(
+        adapter.publish({
+          workspaceId: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
+          accountId: 'page_987654321',
+          text: 'Should not publish to a foreign page',
+          mediaUrls: [],
+          idempotencyKey: 'idemp-fb-page-mismatch',
+          fingerprint: 'c'.repeat(64),
+          metadata: {
+            accessToken: 'valid_page_token',
+            pageId: 'page_attacker_owned',
+          },
+        })
+      ).rejects.toMatchObject({
+        code: 'PAGE_ID_MISMATCH',
+        category: 'AUTHORIZATION',
+        retryable: false,
+      });
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it('accepts pageId when it matches the connected account', async () => {
+      mockedAxios.post.mockResolvedValueOnce({ data: { id: 'page_987654321_post_bound' } });
+
+      const res = await adapter.publish({
+        workspaceId: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
+        accountId: 'page_987654321',
+        text: 'Bound to stored page',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-fb-page-match',
+        fingerprint: 'd'.repeat(64),
+        metadata: {
+          accessToken: 'valid_page_token',
+          pageId: 'page_987654321',
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://graph.facebook.com/v21.0/page_987654321/feed',
+        null,
+        expect.any(Object)
+      );
+    });
+
     it('detects Facebook security checkpoint (Error 190 Subcode 459)', async () => {
       mockedAxios.post.mockRejectedValueOnce({
         response: {

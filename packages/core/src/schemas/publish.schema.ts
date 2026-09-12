@@ -190,7 +190,7 @@ export const DiscordOptionsSchema = z.object({
 });
 
 export const FacebookOptionsSchema = z.object({
-  /** Facebook Page ID override */
+  /** Must match the connected account page identity when provided */
   pageId: z.string().optional(),
   /** Optional link attachment for feed post */
   link: z.string().url().optional(),

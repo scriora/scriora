@@ -1,4 +1,9 @@
 import axios, { type AxiosError } from 'axios';
+import {
+  assertSafeRemoteUrl,
+  fetchSafeRemoteUrl,
+  UnsafeRemoteUrlError,
+} from 'scriora-core/security';
 import type {
   OAuthCallbackParams,
   OAuthInitParams,
@@ -90,6 +95,10 @@ export class YouTubeAdapter implements PlatformAdapter {
 
     const videoUrl = mediaUrls[0];
     const metadata = (request.metadata || {}) as YouTubeMetadata;
+    this.assertAllowlistedMediaUrl(videoUrl);
+    if (metadata.thumbnailUrl) {
+      this.assertAllowlistedMediaUrl(metadata.thumbnailUrl);
+    }
 
     // Determine title (max 100 characters, sanitize < and > as prohibited by YouTube API)
     let title = metadata.title || request.text?.split('\n')[0]?.trim() || 'Untitled Video';
@@ -367,14 +376,24 @@ export class YouTubeAdapter implements PlatformAdapter {
     _accessToken?: string
   ): Promise<string> {
     try {
-      const videoRes = await axios.get<ArrayBuffer | Buffer>(videoUrl, {
-        responseType: 'arraybuffer',
-        timeout: 60000,
-      });
-
-      const videoBuffer = Buffer.isBuffer(videoRes.data)
-        ? videoRes.data
-        : Buffer.from(videoRes.data);
+      let videoBuffer: Buffer;
+      try {
+        const downloaded = await fetchSafeRemoteUrl(videoUrl, {
+          timeoutMs: 60_000,
+          maxBytes: 256 * 1024 * 1024,
+        });
+        videoBuffer = downloaded.buffer;
+      } catch (err: unknown) {
+        if (err instanceof UnsafeRemoteUrlError) {
+          throw new PlatformError({
+            message: err.message,
+            code: err.code === 'REMOTE_URL_TIMEOUT' ? 'NETWORK_ERROR' : 'VALIDATION_ERROR',
+            category: err.code === 'REMOTE_URL_TIMEOUT' ? 'TIMEOUT' : 'VALIDATION',
+            retryable: err.code === 'REMOTE_URL_TIMEOUT',
+          });
+        }
+        throw err;
+      }
 
       const uploadRes = await axios.put<{ id: string }>(sessionUrl, videoBuffer, {
         headers: {
@@ -416,12 +435,24 @@ export class YouTubeAdapter implements PlatformAdapter {
     thumbnailUrl: string,
     accessToken: string
   ): Promise<void> {
-    const thumbRes = await axios.get<ArrayBuffer>(thumbnailUrl, {
-      responseType: 'arraybuffer',
-      timeout: 30000,
-    });
-
-    const thumbBuffer = Buffer.from(thumbRes.data);
+    let thumbBuffer: Buffer;
+    try {
+      const downloaded = await fetchSafeRemoteUrl(thumbnailUrl, {
+        timeoutMs: 30_000,
+        maxBytes: 10 * 1024 * 1024,
+      });
+      thumbBuffer = downloaded.buffer;
+    } catch (err: unknown) {
+      if (err instanceof UnsafeRemoteUrlError) {
+        throw new PlatformError({
+          message: err.message,
+          code: 'VALIDATION_ERROR',
+          category: 'VALIDATION',
+          retryable: false,
+        });
+      }
+      throw err;
+    }
 
     await axios.post(`${this.uploadUrl}/thumbnails/set`, thumbBuffer, {
       params: {
@@ -461,5 +492,18 @@ export class YouTubeAdapter implements PlatformAdapter {
       }
     );
     return res.data.id;
+  }
+
+  private assertAllowlistedMediaUrl(url: string): void {
+    try {
+      assertSafeRemoteUrl(url);
+    } catch (err: unknown) {
+      throw new PlatformError({
+        message: err instanceof Error ? err.message : 'Media URL is not allowed',
+        code: 'VALIDATION_ERROR',
+        category: 'VALIDATION',
+        retryable: false,
+      });
+    }
   }
 }

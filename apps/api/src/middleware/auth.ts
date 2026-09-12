@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from 'scriora-core';
+import { normalizeApiKeyScopes } from '../lib/rbac.js';
 import { err } from '../lib/response.js';
 
 declare module 'fastify' {
@@ -12,7 +13,7 @@ declare module 'fastify' {
     apiKey?: {
       id: string;
       workspaceId: string;
-      scopes: unknown;
+      scopes: string[];
     };
   }
 }
@@ -73,7 +74,7 @@ export async function verifyAuth(request: FastifyRequest, reply: FastifyReply): 
     request.apiKey = {
       id: keyRecord.id,
       workspaceId: keyRecord.workspaceId,
-      scopes: keyRecord.scopes,
+      scopes: normalizeApiKeyScopes(keyRecord.scopes),
     };
     return;
   }

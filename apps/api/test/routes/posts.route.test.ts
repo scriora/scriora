@@ -947,4 +947,112 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     );
     expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
   });
+
+  it('POST /v1/posts rejects a non-UUID Idempotency-Key header', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Idempotency WS',
+        slug: 'idemp-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+        'idempotency-key': 'short-prefix',
+      },
+      payload: {
+        body: 'Should not persist',
+        targets: [
+          {
+            socialAccountId: '11111111-1111-4111-8111-111111111111',
+            platform: 'LINKEDIN',
+          },
+        ],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+    expect(json.error.message).toContain('Idempotency-Key');
+  });
+
+  it('POST /v1/posts looks up Idempotency-Key by exact match, not startsWith', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const userId = 'user-123';
+    const accountId = '33333333-3333-4333-8333-333333333333';
+    const headerKey = '99999999-9999-4999-8999-999999999999';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId,
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Exact Key WS',
+        slug: 'exact-key-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: userId,
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    const findFirst = vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue({
+      id: 'existing-pub',
+      status: 'READY',
+    } as any);
+
+    const token = app.jwt.sign({ sub: userId });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+        'idempotency-key': headerKey,
+      },
+      payload: {
+        body: 'Replay with header key',
+        targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(JSON.parse(res.body).data.idempotentReplay).toBe(true);
+    expect(findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        idempotencyKey: { in: [headerKey, `${headerKey}:${accountId}`] },
+      }),
+    });
+    expect(JSON.stringify(findFirst.mock.calls[0]![0])).not.toContain('startsWith');
+  });
 });

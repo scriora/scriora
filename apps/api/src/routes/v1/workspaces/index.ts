@@ -7,6 +7,11 @@ import {
   UpdateWorkspaceSchema,
 } from 'scriora-core';
 import { z } from 'zod';
+import {
+  evaluateMemberRemoval,
+  requireWorkspaceAdmin,
+  requireWorkspaceWrite,
+} from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
@@ -151,20 +156,8 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Update workspace
-    scoped.patch('/:wsId', async (request, reply) => {
+    scoped.patch('/:wsId', { preHandler: [requireWorkspaceAdmin] }, async (request, reply) => {
       const { wsId } = request.params as { wsId: string };
-      if (request.workspace!.role !== 'OWNER' && request.workspace!.role !== 'ADMIN') {
-        return reply
-          .status(403)
-          .send(
-            err(
-              'FORBIDDEN',
-              'AUTHORIZATION_ERROR',
-              'Only OWNER or ADMIN can modify workspace settings',
-              request.id
-            )
-          );
-      }
 
       const parseResult = UpdateWorkspaceSchema.safeParse(request.body);
       if (!parseResult.success) {
@@ -215,150 +208,198 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Invite Member
-    scoped.post('/:wsId/members', async (request, reply) => {
-      const { wsId } = request.params as { wsId: string };
-      if (request.workspace!.role !== 'OWNER' && request.workspace!.role !== 'ADMIN') {
-        return reply
-          .status(403)
-          .send(err('FORBIDDEN', 'AUTHORIZATION_ERROR', 'Permission denied', request.id));
-      }
+    scoped.post(
+      '/:wsId/members',
+      { preHandler: [requireWorkspaceAdmin] },
+      async (request, reply) => {
+        const { wsId } = request.params as { wsId: string };
 
-      const parseResult = InviteMemberSchema.safeParse(request.body);
-      if (!parseResult.success) {
-        return reply
-          .status(400)
-          .send(
-            err('VALIDATION_ERROR', 'VALIDATION_ERROR', 'Invalid invite parameters', request.id)
-          );
-      }
+        const parseResult = InviteMemberSchema.safeParse(request.body);
+        if (!parseResult.success) {
+          return reply
+            .status(400)
+            .send(
+              err('VALIDATION_ERROR', 'VALIDATION_ERROR', 'Invalid invite parameters', request.id)
+            );
+        }
 
-      const { email, role } = parseResult.data;
-      let targetUser = await prisma.user.findUnique({ where: { email } });
+        const { email, role } = parseResult.data;
+        let targetUser = await prisma.user.findUnique({ where: { email } });
 
-      if (!targetUser) {
-        targetUser = await prisma.user.create({
-          data: {
-            email,
-            name: email.split('@')[0] || 'Invited User',
-            authProvider: 'MAGIC_LINK',
+        if (!targetUser) {
+          targetUser = await prisma.user.create({
+            data: {
+              email,
+              name: email.split('@')[0] || 'Invited User',
+              authProvider: 'MAGIC_LINK',
+            },
+          });
+        }
+
+        const existingMember = await prisma.workspaceMember.findUnique({
+          where: {
+            workspaceId_userId: {
+              workspaceId: wsId,
+              userId: targetUser.id,
+            },
           },
         });
-      }
 
-      const member = await prisma.workspaceMember.upsert({
-        where: {
-          workspaceId_userId: {
+        if (existingMember) {
+          return reply
+            .status(409)
+            .send(
+              err(
+                'MEMBER_ALREADY_EXISTS',
+                'CONFLICT',
+                'Member already belongs to this workspace; invite cannot change an existing role',
+                request.id
+              )
+            );
+        }
+
+        const member = await prisma.workspaceMember.create({
+          data: {
             workspaceId: wsId,
             userId: targetUser.id,
+            workspaceRole: role,
           },
-        },
-        create: {
-          workspaceId: wsId,
-          userId: targetUser.id,
-          workspaceRole: role,
-        },
-        update: {
-          workspaceRole: role,
-        },
-      });
+        });
 
-      return reply.status(201).send(ok(member, request.id));
-    });
+        return reply.status(201).send(ok(member, request.id));
+      }
+    );
 
     // Remove Member
-    scoped.delete('/:wsId/members/:userId', async (request, reply) => {
-      const paramResult = MemberParamSchema.safeParse(request.params);
-      if (!paramResult.success) {
-        return reply
-          .status(400)
-          .send(
-            err(
-              'VALIDATION_ERROR',
-              'VALIDATION_ERROR',
-              'Invalid userId or wsId: must be a valid UUID',
-              request.id
-            )
-          );
-      }
-      const { wsId, userId } = paramResult.data;
-      if (request.workspace!.role !== 'OWNER' && request.workspace!.role !== 'ADMIN') {
-        return reply
-          .status(403)
-          .send(err('FORBIDDEN', 'AUTHORIZATION_ERROR', 'Permission denied', request.id));
-      }
+    scoped.delete(
+      '/:wsId/members/:userId',
+      { preHandler: [requireWorkspaceAdmin] },
+      async (request, reply) => {
+        const paramResult = MemberParamSchema.safeParse(request.params);
+        if (!paramResult.success) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'VALIDATION_ERROR',
+                'VALIDATION_ERROR',
+                'Invalid userId or wsId: must be a valid UUID',
+                request.id
+              )
+            );
+        }
+        const { wsId, userId } = paramResult.data;
 
-      if (userId === request.authContext!.userId) {
-        return reply
-          .status(400)
-          .send(
-            err(
-              'CANNOT_REMOVE_SELF',
-              'BUSINESS_RULE_VIOLATION',
-              'Cannot remove yourself from workspace via this endpoint',
-              request.id
-            )
-          );
+        if (userId === request.authContext!.userId) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'CANNOT_REMOVE_SELF',
+                'BUSINESS_RULE_VIOLATION',
+                'Cannot remove yourself from workspace via this endpoint',
+                request.id
+              )
+            );
+        }
+
+        const target = await prisma.workspaceMember.findUnique({
+          where: {
+            workspaceId_userId: {
+              workspaceId: wsId,
+              userId,
+            },
+          },
+          include: { workspace: true },
+        });
+
+        if (!target) {
+          return reply
+            .status(404)
+            .send(err('MEMBER_NOT_FOUND', 'NOT_FOUND', 'Workspace member not found', request.id));
+        }
+
+        const ownerCount = await prisma.workspaceMember.count({
+          where: { workspaceId: wsId, workspaceRole: 'OWNER' },
+        });
+        const removal = evaluateMemberRemoval({
+          callerRole: request.workspace!.role,
+          targetRole: target.workspaceRole,
+          targetUserId: userId,
+          workspaceOwnerUserId: target.workspace.ownerUserId,
+          ownerCount,
+        });
+
+        if (!removal.allowed) {
+          return reply
+            .status(removal.status)
+            .send(err(removal.code, removal.category, removal.message, request.id));
+        }
+
+        await prisma.workspaceMember.deleteMany({
+          where: {
+            workspaceId: wsId,
+            userId,
+          },
+        });
+
+        return reply.status(204).send();
       }
-
-      await prisma.workspaceMember.deleteMany({
-        where: {
-          workspaceId: wsId,
-          userId,
-        },
-      });
-
-      return reply.status(204).send();
-    });
+    );
 
     // Create API Key
-    scoped.post('/:wsId/api-keys', async (request, reply) => {
-      const { wsId } = request.params as { wsId: string };
-      const parseResult = CreateApiKeySchema.safeParse(request.body);
-      if (!parseResult.success) {
-        return reply
-          .status(400)
-          .send(
-            err('VALIDATION_ERROR', 'VALIDATION_ERROR', 'Invalid API key parameters', request.id)
-          );
-      }
+    scoped.post(
+      '/:wsId/api-keys',
+      { preHandler: [requireWorkspaceWrite] },
+      async (request, reply) => {
+        const { wsId } = request.params as { wsId: string };
+        const parseResult = CreateApiKeySchema.safeParse(request.body);
+        if (!parseResult.success) {
+          return reply
+            .status(400)
+            .send(
+              err('VALIDATION_ERROR', 'VALIDATION_ERROR', 'Invalid API key parameters', request.id)
+            );
+        }
 
-      const { name, scopes, expiresInDays } = parseResult.data;
-      const rawSecret = crypto.randomBytes(24).toString('base64url');
-      const apiKeyString = `sk_live_${rawSecret}`;
-      const keyPrefix = apiKeyString.slice(0, 12);
-      const keyHash = crypto.createHash('sha256').update(apiKeyString).digest('hex');
+        const { name, scopes, expiresInDays } = parseResult.data;
+        const rawSecret = crypto.randomBytes(24).toString('base64url');
+        const apiKeyString = `sk_live_${rawSecret}`;
+        const keyPrefix = apiKeyString.slice(0, 12);
+        const keyHash = crypto.createHash('sha256').update(apiKeyString).digest('hex');
 
-      const expiresAt = expiresInDays
-        ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
-        : null;
+        const expiresAt = expiresInDays
+          ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
+          : null;
 
-      const record = await prisma.apiKey.create({
-        data: {
-          workspaceId: wsId,
-          userId: request.authContext!.userId,
-          name,
-          keyHash,
-          keyPrefix,
-          scopes,
-          expiresAt,
-        },
-      });
-
-      return reply.status(201).send(
-        ok(
-          {
-            apiKey: apiKeyString, // Raw key returned ONCE
-            id: record.id,
-            name: record.name,
-            keyPrefix: record.keyPrefix,
-            scopes: record.scopes,
-            expiresAt: record.expiresAt,
-            createdAt: record.createdAt,
+        const record = await prisma.apiKey.create({
+          data: {
+            workspaceId: wsId,
+            userId: request.authContext!.userId,
+            name,
+            keyHash,
+            keyPrefix,
+            scopes,
+            expiresAt,
           },
-          request.id
-        )
-      );
-    });
+        });
+
+        return reply.status(201).send(
+          ok(
+            {
+              apiKey: apiKeyString, // Raw key returned ONCE
+              id: record.id,
+              name: record.name,
+              keyPrefix: record.keyPrefix,
+              scopes: record.scopes,
+              expiresAt: record.expiresAt,
+              createdAt: record.createdAt,
+            },
+            request.id
+          )
+        );
+      }
+    );
 
     // List API Keys
     scoped.get('/:wsId/api-keys', async (request, reply) => {
@@ -381,27 +422,31 @@ export const workspaceRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     // Revoke API Key
-    scoped.delete('/:wsId/api-keys/:keyId', async (request, reply) => {
-      const paramResult = ApiKeyParamSchema.safeParse(request.params);
-      if (!paramResult.success) {
-        return reply
-          .status(400)
-          .send(
-            err(
-              'VALIDATION_ERROR',
-              'VALIDATION_ERROR',
-              'Invalid keyId or wsId: must be a valid UUID',
-              request.id
-            )
-          );
-      }
-      const { wsId, keyId } = paramResult.data;
-      await prisma.apiKey.updateMany({
-        where: { id: keyId, workspaceId: wsId },
-        data: { revokedAt: new Date() },
-      });
+    scoped.delete(
+      '/:wsId/api-keys/:keyId',
+      { preHandler: [requireWorkspaceAdmin] },
+      async (request, reply) => {
+        const paramResult = ApiKeyParamSchema.safeParse(request.params);
+        if (!paramResult.success) {
+          return reply
+            .status(400)
+            .send(
+              err(
+                'VALIDATION_ERROR',
+                'VALIDATION_ERROR',
+                'Invalid keyId or wsId: must be a valid UUID',
+                request.id
+              )
+            );
+        }
+        const { wsId, keyId } = paramResult.data;
+        await prisma.apiKey.updateMany({
+          where: { id: keyId, workspaceId: wsId },
+          data: { revokedAt: new Date() },
+        });
 
-      return reply.status(204).send();
-    });
+        return reply.status(204).send();
+      }
+    );
   });
 };

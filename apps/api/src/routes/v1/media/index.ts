@@ -1,6 +1,8 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { PdfCarouselGenerator } from 'scriora-media';
+import { assertSafeRemoteUrl, UnsafeRemoteUrlError } from 'scriora-core/security';
+import { PdfCarouselError, PdfCarouselGenerator } from 'scriora-media';
 import { z } from 'zod';
+import { requireWorkspaceWrite } from '../../../lib/rbac.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
@@ -62,7 +64,7 @@ export const mediaRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /v1/media/carousel
    * Generates an interactive multi-page PDF Carousel document from structured slides or images.
    */
-  fastify.post('/carousel', async (request, reply) => {
+  fastify.post('/carousel', { preHandler: [requireWorkspaceWrite] }, async (request, reply) => {
     const parseResult = GenerateCarouselBodySchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send(
@@ -92,6 +94,21 @@ export const mediaRoutes: FastifyPluginAsync = async (fastify) => {
       for (let i = 0; i < slides.length; i++) {
         const slide = slides[i]!;
         if (typeof slide === 'string') {
+          try {
+            assertSafeRemoteUrl(slide);
+          } catch (urlError: unknown) {
+            const message =
+              urlError instanceof UnsafeRemoteUrlError
+                ? urlError.message
+                : 'Slide image URL is not allowed';
+            return reply
+              .status(400)
+              .send(
+                err('UNSAFE_REMOTE_URL', 'VALIDATION_ERROR', message, request.id, false, [
+                  { field: `slides.${i}`, message },
+                ])
+              );
+          }
           processedSlideBuffers.push(slide);
         } else {
           // Structured text slide -> render to PNG buffer via Sharp + SVG
@@ -144,6 +161,20 @@ export const mediaRoutes: FastifyPluginAsync = async (fastify) => {
         )
       );
     } catch (generateError: unknown) {
+      if (
+        generateError instanceof UnsafeRemoteUrlError ||
+        (generateError instanceof PdfCarouselError &&
+          (generateError.code === 'UNSAFE_REMOTE_URL' ||
+            generateError.code === 'REMOTE_URL_TIMEOUT' ||
+            generateError.code === 'REMOTE_URL_TOO_LARGE' ||
+            generateError.code === 'REMOTE_URL_REDIRECT_BLOCKED'))
+      ) {
+        const message =
+          generateError instanceof Error ? generateError.message : 'Slide image URL is not allowed';
+        return reply
+          .status(400)
+          .send(err('UNSAFE_REMOTE_URL', 'VALIDATION_ERROR', message, request.id));
+      }
       const message =
         generateError instanceof Error ? generateError.message : 'Failed to generate carousel';
       return reply
