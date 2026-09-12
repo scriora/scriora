@@ -17,6 +17,21 @@ export interface DateTimeFormatOptions {
   useArabicNumerals?: boolean;
 }
 
+export interface HistoricalPostEngagement {
+  publishedAt: Date | string;
+  impressions?: number | undefined;
+  likes?: number | undefined;
+  replies?: number | undefined;
+  reposts?: number | undefined;
+  quotes?: number | undefined;
+  bookmarks?: number | undefined;
+  clicks?: number | undefined;
+  engagementRate?: number | undefined;
+  compositeScore?: number | undefined;
+}
+
+export type SlotSource = 'BENCHMARK' | 'USER_ANALYTICS' | 'HYBRID_LEARNED';
+
 export interface SmartScheduleSlot {
   datetimeUtc: string;
   localTime: string;
@@ -25,6 +40,18 @@ export interface SmartScheduleSlot {
   formattedEnglish: string;
   score: number;
   recommendationReason: string;
+  source: SlotSource;
+  sampleCount?: number | undefined;
+  confidence?: number | undefined;
+  performanceMultiplier?: number | undefined;
+}
+
+export interface SmartScheduleOptions {
+  timezone?: string | undefined;
+  startDate?: Date | undefined;
+  daysAhead?: number | undefined;
+  platform?: ('LINKEDIN' | 'X' | 'GENERAL') | undefined;
+  history?: HistoricalPostEngagement[] | undefined;
 }
 
 export class DateTimeService {
@@ -220,21 +247,251 @@ export class DateTimeService {
   }
 
   /**
-   * Generates optimal smart schedule slots based on industry benchmark data (Buffer 8.7M post analysis for X, 4.8M for LinkedIn):
+   * Extracts local time parts (weekday, hour, minute) in the specified timezone.
+   */
+  private getLocalTimeParts(
+    date: Date,
+    timezone: string
+  ): { dayOfWeek: number; hour: number; minute: number } {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+    });
+    const parts = formatter.formatToParts(date);
+    let weekdayStr = '';
+    let hour = 0;
+    let minute = 0;
+    for (const p of parts) {
+      if (p.type === 'weekday') weekdayStr = p.value;
+      if (p.type === 'hour') hour = Number(p.value);
+      if (p.type === 'minute') minute = Number(p.value);
+    }
+    const dayMap: Record<string, number> = {
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
+    };
+    return {
+      dayOfWeek: dayMap[weekdayStr] ?? date.getUTCDay(),
+      hour: hour === 24 ? 0 : hour,
+      minute,
+    };
+  }
+
+  /**
+   * Evaluates historical post performance using 2026 platform algorithmic scoring.
+   */
+  private computePostScore(post: HistoricalPostEngagement, platform: string): number {
+    if (post.compositeScore !== undefined && post.compositeScore > 0) {
+      return post.compositeScore;
+    }
+    if (post.engagementRate !== undefined && post.engagementRate > 0) {
+      return post.engagementRate * 100;
+    }
+
+    const replies = post.replies ?? 0;
+    const reposts = post.reposts ?? 0;
+    const quotes = post.quotes ?? 0;
+    const bookmarks = post.bookmarks ?? 0;
+    const clicks = post.clicks ?? 0;
+    const likes = post.likes ?? 0;
+    const impressions = post.impressions ?? 0;
+
+    let raw = 0;
+    if (platform === 'X') {
+      raw = replies * 27 + quotes * 20 + reposts * 20 + clicks * 12 + bookmarks * 8 + likes * 1;
+    } else if (platform === 'LINKEDIN') {
+      raw = replies * 30 + reposts * 25 + clicks * 15 + likes * 5;
+    } else {
+      raw = replies * 25 + reposts * 20 + clicks * 10 + likes * 5;
+    }
+
+    if (raw === 0 && likes === 0 && impressions === 0) {
+      return 1.0;
+    }
+
+    return impressions > 0 ? (raw / impressions) * 100 : raw;
+  }
+
+  /**
+   * Blends global benchmark templates with empirical user engagement history.
+   */
+  private learnScheduleTemplates(
+    history: HistoricalPostEngagement[] | undefined,
+    timezone: string,
+    platform: string,
+    baseTemplates: Array<{
+      dayOfWeek: number;
+      hour: number;
+      minute: number;
+      score: number;
+      reason: string;
+    }>
+  ): Array<{
+    dayOfWeek: number;
+    hour: number;
+    minute: number;
+    score: number;
+    reason: string;
+    source: SlotSource;
+    sampleCount: number;
+    confidence: number;
+    performanceMultiplier: number;
+  }> {
+    if (!history || history.length === 0) {
+      return baseTemplates.map((tpl) => ({
+        ...tpl,
+        source: 'BENCHMARK' as SlotSource,
+        sampleCount: 0,
+        confidence: 0,
+        performanceMultiplier: 1.0,
+      }));
+    }
+
+    interface Bucket {
+      dayOfWeek: number;
+      hour: number;
+      scores: number[];
+    }
+
+    const buckets = new Map<string, Bucket>();
+    let totalScoreSum = 0;
+    let validCount = 0;
+
+    for (const post of history) {
+      const pubDate =
+        typeof post.publishedAt === 'object' ? post.publishedAt : new Date(post.publishedAt);
+      if (Number.isNaN(pubDate.getTime())) continue;
+
+      const { dayOfWeek, hour } = this.getLocalTimeParts(pubDate, timezone);
+      const key = `${dayOfWeek}:${hour}`;
+
+      const score = this.computePostScore(post, platform);
+      totalScoreSum += score;
+      validCount++;
+
+      let b = buckets.get(key);
+      if (!b) {
+        b = { dayOfWeek, hour, scores: [] };
+        buckets.set(key, b);
+      }
+      b.scores.push(score);
+    }
+
+    const overallAverage = validCount > 0 ? totalScoreSum / validCount : 1.0;
+
+    const learnedSlots: Array<{
+      dayOfWeek: number;
+      hour: number;
+      minute: number;
+      score: number;
+      reason: string;
+      source: SlotSource;
+      sampleCount: number;
+      confidence: number;
+      performanceMultiplier: number;
+    }> = [];
+
+    const matchedKeys = new Set<string>();
+
+    for (const tpl of baseTemplates) {
+      const key = `${tpl.dayOfWeek}:${tpl.hour}`;
+      const bucket = buckets.get(key);
+
+      if (bucket && bucket.scores.length > 0) {
+        matchedKeys.add(key);
+        const bucketAvg = bucket.scores.reduce((a, b) => a + b, 0) / bucket.scores.length;
+        const multiplier = overallAverage > 0 ? bucketAvg / overallAverage : 1.0;
+        const sampleCount = bucket.scores.length;
+        const confidence = Math.min(1.0, (sampleCount / 3) * Math.min(1.0, validCount / 5));
+
+        const userScore = Math.max(20, Math.min(100, Math.round(multiplier * 60)));
+        const blendedScore = Math.max(
+          10,
+          Math.min(100, Math.round((1 - confidence) * tpl.score + confidence * userScore))
+        );
+
+        const pctDiff = Math.round((multiplier - 1) * 100);
+        const pctSign = pctDiff >= 0 ? `+${pctDiff}%` : `${pctDiff}%`;
+        const reason = `${tpl.reason} • أكدته تحليلات حسابك (${pctSign} تفاعل مقارنة بمتوسطك)`;
+
+        learnedSlots.push({
+          dayOfWeek: tpl.dayOfWeek,
+          hour: tpl.hour,
+          minute: tpl.minute,
+          score: blendedScore,
+          reason,
+          source: confidence >= 0.2 ? 'HYBRID_LEARNED' : 'BENCHMARK',
+          sampleCount,
+          confidence: Number(confidence.toFixed(2)),
+          performanceMultiplier: Number(multiplier.toFixed(2)),
+        });
+      } else {
+        learnedSlots.push({
+          ...tpl,
+          source: 'BENCHMARK',
+          sampleCount: 0,
+          confidence: 0,
+          performanceMultiplier: 1.0,
+        });
+      }
+    }
+
+    // Discover non-benchmark user golden windows
+    const DAY_NAMES_AR = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    for (const [key, bucket] of buckets.entries()) {
+      if (matchedKeys.has(key)) continue;
+
+      const sampleCount = bucket.scores.length;
+      if (sampleCount < 2) continue; // Require at least 2 observations to avoid noise
+
+      const bucketAvg = bucket.scores.reduce((a, b) => a + b, 0) / sampleCount;
+      const multiplier = overallAverage > 0 ? bucketAvg / overallAverage : 1.0;
+
+      if (multiplier >= 1.1) {
+        const confidence = Math.min(1.0, (sampleCount / 3) * Math.min(1.0, validCount / 5));
+        const userScore = Math.max(75, Math.min(100, Math.round(70 + (multiplier - 1) * 30)));
+        const dayName = DAY_NAMES_AR[bucket.dayOfWeek] ?? '';
+        const hourStr = `${bucket.hour % 12 || 12}:00 ${bucket.hour >= 12 ? 'مساءً' : 'صباحاً'}`;
+        const pctSign = `+${Math.round((multiplier - 1) * 100)}%`;
+
+        learnedSlots.push({
+          dayOfWeek: bucket.dayOfWeek,
+          hour: bucket.hour,
+          minute: 0,
+          score: userScore,
+          reason: `${dayName} ${hourStr}: نافذة ذهبية مخصصة — رصدنا تفاعل استثنائي لحسابك (${pctSign} أعلى من متوسطك)`,
+          source: 'USER_ANALYTICS',
+          sampleCount,
+          confidence: Number(confidence.toFixed(2)),
+          performanceMultiplier: Number(multiplier.toFixed(2)),
+        });
+      }
+    }
+
+    return learnedSlots;
+  }
+
+  /**
+   * Generates optimal smart schedule slots based on industry benchmark data (Buffer 8.7M post analysis for X, 4.8M for LinkedIn)
+   * and dynamically learns from user post analytics history.
    * - X Peak window: Weekday mornings 9:00 AM – 11:00 AM (Tuesday 9am #1, Wednesday 10am #2, Wednesday 9am #3).
    * - LinkedIn Peak window: 3:00 PM – 8:00 PM on weekdays.
-   * Extensible to individual account case-study models when account analytics history exists.
+   * - Dynamically incorporates user engagement telemetry and discovers personalized golden windows.
    */
-  public getSmartScheduleSlots(options?: {
-    timezone?: string;
-    startDate?: Date;
-    daysAhead?: number;
-    platform?: 'LINKEDIN' | 'X' | 'GENERAL';
-  }): SmartScheduleSlot[] {
+  public getSmartScheduleSlots(options?: SmartScheduleOptions): SmartScheduleSlot[] {
     const timezone = options?.timezone || this.defaultTimezone;
     const start = options?.startDate || new Date();
     const daysAhead = Math.min(options?.daysAhead || 7, 14);
     const platform = options?.platform || 'GENERAL';
+    const history = options?.history;
 
     const linkedInSlotTemplates = [
       {
@@ -348,15 +605,21 @@ export class DateTimeService {
       },
     ];
 
-    const goldenSlotTemplates = platform === 'X' ? xSlotTemplates : linkedInSlotTemplates;
+    const baseTemplates = platform === 'X' ? xSlotTemplates : linkedInSlotTemplates;
+    const learnedTemplates = this.learnScheduleTemplates(
+      history,
+      timezone,
+      platform,
+      baseTemplates
+    );
 
     const results: SmartScheduleSlot[] = [];
 
     for (let dayOffset = 0; dayOffset < daysAhead; dayOffset++) {
       const candidateDay = new Date(start.getTime() + dayOffset * 86400000);
-      const dayOfWeek = candidateDay.getUTCDay();
+      const { dayOfWeek } = this.getLocalTimeParts(candidateDay, timezone);
 
-      for (const tpl of goldenSlotTemplates) {
+      for (const tpl of learnedTemplates) {
         if (tpl.dayOfWeek === dayOfWeek) {
           const year = candidateDay.getUTCFullYear();
           const month = String(candidateDay.getUTCMonth() + 1).padStart(2, '0');
@@ -371,11 +634,27 @@ export class DateTimeService {
               results.push({
                 datetimeUtc: utcDate.toISOString(),
                 localTime: `${hour}:${min}`,
-                localDay: this.format(utcDate, { timezone, locale: 'ar', style: 'dateOnly' }),
-                formattedArabic: this.format(utcDate, { timezone, locale: 'ar', style: 'long' }),
-                formattedEnglish: this.format(utcDate, { timezone, locale: 'en', style: 'long' }),
+                localDay: this.format(utcDate, {
+                  timezone,
+                  locale: 'ar',
+                  style: 'dateOnly',
+                }),
+                formattedArabic: this.format(utcDate, {
+                  timezone,
+                  locale: 'ar',
+                  style: 'long',
+                }),
+                formattedEnglish: this.format(utcDate, {
+                  timezone,
+                  locale: 'en',
+                  style: 'long',
+                }),
                 score: tpl.score,
                 recommendationReason: tpl.reason,
+                source: tpl.source,
+                sampleCount: tpl.sampleCount,
+                confidence: tpl.confidence,
+                performanceMultiplier: tpl.performanceMultiplier,
               });
             }
           } catch {

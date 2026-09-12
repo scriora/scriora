@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
-import { PaginationQuerySchema, PublishPayloadSchema, prisma } from 'scriora-core';
+import {
+  adaptiveScheduleService,
+  defaultDateTimeService,
+  PaginationQuerySchema,
+  PublishPayloadSchema,
+  prisma,
+} from 'scriora-core';
 import { z } from 'zod';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
@@ -8,6 +14,15 @@ import { verifyWorkspace } from '../../../middleware/workspace.js';
 
 const PostParamsSchema = z.object({
   postId: z.string().uuid('Invalid postId: must be a valid UUID'),
+});
+
+const PostSmartScheduleQuerySchema = z.object({
+  socialAccountId: z.string().uuid('Invalid socialAccountId: must be a valid UUID').optional(),
+  platform: z.enum(['LINKEDIN', 'X', 'GENERAL']).default('GENERAL').optional(),
+  daysAhead: z.coerce.number().int().min(1).max(30).default(7).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(10).optional(),
+  timezone: z.string().min(1).max(100).optional(),
+  startDate: z.coerce.date().optional(),
 });
 
 export const postRoutes: FastifyPluginAsync = async (fastify) => {
@@ -319,7 +334,66 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     );
   });
 
-  // 3. GET /v1/posts/:postId (Detail)
+  // 3. GET /v1/posts/smart-schedule (Adaptive Smart Posting Recommendations)
+  fastify.get('/smart-schedule', async (request, reply) => {
+    const queryResult = PostSmartScheduleQuerySchema.safeParse(request.query);
+    if (!queryResult.success) {
+      return reply.status(400).send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          'Invalid query parameters',
+          request.id,
+          false,
+          queryResult.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }))
+        )
+      );
+    }
+
+    const workspaceId = request.workspace!.id;
+    const { socialAccountId, platform, daysAhead, limit, timezone, startDate } = queryResult.data;
+
+    if (socialAccountId) {
+      try {
+        const slots = await adaptiveScheduleService.getLearnedSlotsForAccount({
+          socialAccountId,
+          workspaceId,
+          daysAhead,
+          limit,
+          timezone,
+          startDate,
+        });
+        return reply.status(200).send(ok(slots, request.id));
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Failed to compute smart schedule';
+        if (message.includes('not found')) {
+          return reply.status(404).send(err('ACCOUNT_NOT_FOUND', 'NOT_FOUND', message, request.id));
+        }
+        return reply
+          .status(500)
+          .send(err('SCHEDULE_CALCULATION_FAILED', 'INTERNAL_ERROR', message, request.id));
+      }
+    }
+
+    // Fallback to workspace benchmark schedule
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { timezone: true },
+    });
+
+    const effectiveTimezone = timezone || workspace?.timezone || 'UTC';
+    const slots = defaultDateTimeService.getSmartScheduleSlots({
+      timezone: effectiveTimezone,
+      platform: platform ?? 'GENERAL',
+      daysAhead: daysAhead ?? 7,
+      startDate,
+    });
+
+    const results = limit ? slots.slice(0, limit) : slots;
+    return reply.status(200).send(ok(results, request.id));
+  });
+
+  // 4. GET /v1/posts/:postId (Detail)
   fastify.get('/:postId', async (request, reply) => {
     const paramResult = PostParamsSchema.safeParse(request.params);
     if (!paramResult.success) {
@@ -361,7 +435,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(200).send(ok(publication, request.id));
   });
 
-  // 4. POST /v1/posts/:postId/cancel
+  // 5. POST /v1/posts/:postId/cancel
   fastify.post('/:postId/cancel', async (request, reply) => {
     const paramResult = PostParamsSchema.safeParse(request.params);
     if (!paramResult.success) {

@@ -41,6 +41,7 @@ export * from './contracts/publication.contract.js';
 export * from './contracts/social-account.contract.js';
 export * from './db/client.js';
 export * from './domain/publishing/publication.service.js';
+export * from './domain/time/adaptive-schedule.service.js';
 export * from './domain/time/datetime.service.js';
 // Canonical Zod validation schemas — imported by apps/api for request validation
 export * from './schemas/index.js';

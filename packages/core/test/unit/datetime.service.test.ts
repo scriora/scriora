@@ -133,6 +133,93 @@ describe('DateTimeService', () => {
       expect(topSlot.localTime).toBe('09:00');
       expect(topSlot.recommendationReason).toContain('الثلاثاء 9:00 ص');
       expect(topSlot.recommendationReason).toContain('8.7M');
+      expect(topSlot.source).toBe('BENCHMARK');
+    });
+
+    it('adapts and learns when user post analytics confirm or boost benchmark windows (HYBRID_LEARNED)', () => {
+      const baseDate = new Date('2026-09-12T00:00:00Z');
+      // Historical post on Tuesday 9:00 AM Cairo time (2026-09-08 06:00 UTC) with massive engagement
+      const history = [
+        {
+          publishedAt: new Date('2026-09-08T06:00:00Z'), // Tuesday 09:00 Cairo
+          likes: 250,
+          replies: 45,
+          reposts: 35,
+          impressions: 2000,
+        },
+        {
+          publishedAt: new Date('2026-09-08T06:05:00Z'), // Tuesday 09:05 Cairo
+          likes: 180,
+          replies: 30,
+          reposts: 20,
+          impressions: 1500,
+        },
+        {
+          publishedAt: new Date('2026-09-01T06:00:00Z'), // Previous Tuesday 09:00 Cairo
+          likes: 300,
+          replies: 50,
+          reposts: 40,
+          impressions: 2500,
+        },
+      ];
+
+      const slots = service.getSmartScheduleSlots({
+        timezone: 'Africa/Cairo',
+        startDate: baseDate,
+        daysAhead: 7,
+        platform: 'X',
+        history,
+      });
+
+      const tuesdaySlot = slots.find(
+        (s) => s.localTime === '09:00' && s.source === 'HYBRID_LEARNED'
+      );
+      expect(tuesdaySlot).toBeDefined();
+      expect(tuesdaySlot?.source).toBe('HYBRID_LEARNED');
+      expect(tuesdaySlot?.confidence).toBeGreaterThan(0.2);
+      expect(tuesdaySlot?.recommendationReason).toContain('أكدته تحليلات حسابك');
+    });
+
+    it('discovers custom user golden windows outside standard benchmark (USER_ANALYTICS)', () => {
+      const baseDate = new Date('2026-09-12T00:00:00Z');
+      // Historical posts on Friday 8:00 PM Cairo (17:00 UTC) with huge engagement vs low elsewhere
+      const history = [
+        {
+          publishedAt: new Date('2026-09-04T17:00:00Z'), // Friday 20:00 Cairo
+          likes: 500,
+          replies: 90,
+          reposts: 60,
+          impressions: 3000,
+        },
+        {
+          publishedAt: new Date('2026-08-28T17:00:00Z'), // Previous Friday 20:00 Cairo
+          likes: 450,
+          replies: 80,
+          reposts: 55,
+          impressions: 2800,
+        },
+        {
+          publishedAt: new Date('2026-09-07T08:00:00Z'), // Monday morning (low engagement)
+          likes: 5,
+          replies: 0,
+          reposts: 0,
+          impressions: 500,
+        },
+      ];
+
+      const slots = service.getSmartScheduleSlots({
+        timezone: 'Africa/Cairo',
+        startDate: baseDate,
+        daysAhead: 7,
+        platform: 'X',
+        history,
+      });
+
+      const discoveredSlot = slots.find((s) => s.source === 'USER_ANALYTICS');
+      expect(discoveredSlot).toBeDefined();
+      expect(discoveredSlot?.localTime).toBe('20:00');
+      expect(discoveredSlot?.recommendationReason).toContain('نافذة ذهبية مخصصة');
+      expect(discoveredSlot?.performanceMultiplier).toBeGreaterThan(1.0);
     });
   });
 });

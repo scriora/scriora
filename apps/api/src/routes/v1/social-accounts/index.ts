@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { prisma } from 'scriora-core';
+import { adaptiveScheduleService, prisma } from 'scriora-core';
 import { PlatformError, platformRegistry } from 'scriora-social';
 import { z } from 'zod';
 import { decryptEnvelopePayload } from '../../../lib/crypto.js';
@@ -19,6 +19,13 @@ const SendMessageSchema = z.object({
 const ListMessagesQuerySchema = z.object({
   maxResults: z.coerce.number().int().min(1).max(100).default(20).optional(),
   paginationToken: z.string().optional(),
+});
+
+const SmartScheduleQuerySchema = z.object({
+  daysAhead: z.coerce.number().int().min(1).max(30).default(7).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(10).optional(),
+  timezone: z.string().min(1).max(100).optional(),
+  startDate: z.coerce.date().optional(),
 });
 
 interface DirectMessageCapableAdapter {
@@ -449,6 +456,60 @@ export const socialAccountRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const message = e instanceof Error ? e.message : 'Unknown error listing direct messages';
       return reply.status(500).send(err('DM_LIST_FAILED', 'PLATFORM_ERROR', message, request.id));
+    }
+  });
+
+  // 6. Get Adaptive Smart Schedule Slots for Account
+  fastify.get('/:accountId/smart-schedule', async (request, reply) => {
+    const paramResult = AccountParamsSchema.safeParse(request.params);
+    if (!paramResult.success) {
+      return reply
+        .status(400)
+        .send(
+          err(
+            'VALIDATION_ERROR',
+            'VALIDATION_ERROR',
+            'Invalid accountId: must be a valid UUID',
+            request.id
+          )
+        );
+    }
+    const { accountId } = paramResult.data;
+    const workspaceId = request.workspace!.id;
+
+    const queryResult = SmartScheduleQuerySchema.safeParse(request.query);
+    if (!queryResult.success) {
+      return reply.status(400).send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          'Invalid query parameters',
+          request.id,
+          false,
+          queryResult.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }))
+        )
+      );
+    }
+
+    try {
+      const slots = await adaptiveScheduleService.getLearnedSlotsForAccount({
+        socialAccountId: accountId,
+        workspaceId,
+        daysAhead: queryResult.data.daysAhead,
+        limit: queryResult.data.limit,
+        timezone: queryResult.data.timezone,
+        startDate: queryResult.data.startDate,
+      });
+
+      return reply.status(200).send(ok(slots, request.id));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Failed to calculate smart schedule slots';
+      if (message.includes('not found')) {
+        return reply.status(404).send(err('ACCOUNT_NOT_FOUND', 'NOT_FOUND', message, request.id));
+      }
+      return reply
+        .status(500)
+        .send(err('SCHEDULE_CALCULATION_FAILED', 'INTERNAL_ERROR', message, request.id));
     }
   });
 };

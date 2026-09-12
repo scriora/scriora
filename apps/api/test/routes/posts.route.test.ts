@@ -452,4 +452,121 @@ describe('API Routes — Posts (Unified Gateway)', () => {
       '💬 Informal community prompt: What do you think about our new update?'
     );
   });
+
+  it('GET /v1/posts/smart-schedule returns 401 when unauthenticated', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/posts/smart-schedule',
+    });
+
+    expect(res.statusCode).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+  });
+
+  it('GET /v1/posts/smart-schedule returns benchmark slots when no socialAccountId is provided', async () => {
+    const { prisma } = await import('scriora-core');
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '22222222-2222-4222-8222-222222222222';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Test Workspace',
+        slug: 'test-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(prisma.workspace, 'findUnique').mockResolvedValue({
+      timezone: 'UTC',
+    } as any);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/posts/smart-schedule?platform=X&daysAhead=3&limit=3',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(Array.isArray(json.data)).toBe(true);
+    expect(json.data.length).toBeLessThanOrEqual(3);
+    expect(json.data[0].source).toBe('BENCHMARK');
+  });
+
+  it('GET /v1/posts/smart-schedule delegates to adaptiveScheduleService when socialAccountId is passed', async () => {
+    const { prisma, adaptiveScheduleService } = await import('scriora-core');
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const accId = '33333333-3333-4333-8333-333333333333';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Test Workspace',
+        slug: 'test-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    vi.spyOn(adaptiveScheduleService, 'getLearnedSlotsForAccount').mockResolvedValue([
+      {
+        datetimeUtc: '2026-09-16T09:00:00.000Z',
+        localTime: '09:00',
+        localDay: 'Wed',
+        formattedArabic: 'الأربعاء 09:00',
+        formattedEnglish: 'Wed 09:00',
+        score: 92,
+        recommendationReason: 'Learned slot from account history',
+        source: 'HYBRID_LEARNED',
+        sampleCount: 3,
+        confidence: 0.85,
+        performanceMultiplier: 1.25,
+      },
+    ]);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/posts/smart-schedule?socialAccountId=${accId}&limit=5`,
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(json.data).toHaveLength(1);
+    expect(json.data[0].source).toBe('HYBRID_LEARNED');
+  });
 });
