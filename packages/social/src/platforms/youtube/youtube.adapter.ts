@@ -18,18 +18,6 @@ import type {
 import { PlatformError } from '../../errors/social.error.js';
 import { YouTubeOAuth } from './youtube.oauth.js';
 
-/** Log adapter failures without echoing user URLs, titles, or raw error text. */
-function sanitizeYouTubeLogDetail(err: unknown): string {
-  if (!(err instanceof Error)) {
-    return 'non-error';
-  }
-  const code =
-    'code' in err && typeof (err as { code?: unknown }).code === 'string'
-      ? (err as { code: string }).code
-      : undefined;
-  return code ? `${err.name}:${code}` : err.name;
-}
-
 export interface YouTubeMetadata {
   title?: string | undefined;
   description?: string | undefined;
@@ -170,11 +158,10 @@ export class YouTubeAdapter implements PlatformAdapter {
 
     // Step 3: Custom thumbnail upload (optional)
     if (metadata.thumbnailUrl) {
-      await this.uploadThumbnail(videoId, metadata.thumbnailUrl, accessToken).catch((err) => {
-        // Thumbnail failures should not fail the entire publication
-        console.warn(
-          `[YouTubeAdapter] Thumbnail upload failed for video ${videoId} (${sanitizeYouTubeLogDetail(err)})`
-        );
+      await this.uploadThumbnail(videoId, metadata.thumbnailUrl, accessToken).catch(() => {
+        // Thumbnail failures should not fail the entire publication.
+        // Static message only — never log URLs, titles, video IDs, or error text.
+        console.warn('[YouTubeAdapter] Thumbnail upload failed');
       });
     }
 
@@ -185,10 +172,8 @@ export class YouTubeAdapter implements PlatformAdapter {
         videoId,
         metadata.firstComment.trim(),
         accessToken
-      ).catch((err) => {
-        console.warn(
-          `[YouTubeAdapter] First comment posting failed for video ${videoId} (${sanitizeYouTubeLogDetail(err)})`
-        );
+      ).catch(() => {
+        console.warn('[YouTubeAdapter] First comment posting failed');
         return undefined;
       });
     }

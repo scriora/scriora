@@ -22,13 +22,17 @@ export function resolveApiKeyPepper(env: NodeJS.ProcessEnv = process.env): strin
 
 /** Canonical stored fingerprint for newly issued API keys. */
 export function hashApiKey(rawApiKey: string, env: NodeJS.ProcessEnv = process.env): string {
-  return crypto.createHmac('sha256', resolveApiKeyPepper(env)).update(rawApiKey).digest('hex');
+  const pepper = resolveApiKeyPepper(env);
+  const hmac = crypto.createHmac('sha256', pepper);
+  // codeql[js/insufficient-password-hash] API keys are high-entropy random secrets fingerprinted with HMAC-SHA256 plus a server pepper for O(1) lookup. User passwords stay Argon2id.
+  return hmac.update(rawApiKey).digest('hex'); // lgtm[js/insufficient-password-hash]
 }
 
 /** Pre-HMAC fingerprint for existing `ApiKey.keyHash` rows (not user passwords). */
 export function legacySha256ApiKeyFingerprint(rawApiKey: string): string {
-  // codeql[js/insufficient-password-hash]: random API-key lookup digest, not a password hash. New keys use HMAC-SHA256. Passwords stay Argon2id.
-  return crypto.createHash('sha256').update(rawApiKey).digest('hex');
+  const digest = crypto.createHash('sha256');
+  // codeql[js/insufficient-password-hash] Legacy API-key lookup digest only, not a password hash. New keys use HMAC-SHA256. User passwords stay Argon2id.
+  return digest.update(rawApiKey).digest('hex'); // lgtm[js/insufficient-password-hash]
 }
 
 /** HMAC fingerprint first, then the legacy SHA-256 digest if it differs. */
