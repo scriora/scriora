@@ -263,6 +263,15 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.data.publications).toHaveLength(2);
     expect(json.data.publications[0].status).toBe('SCHEDULED');
     expect(json.data.publications[1].status).toBe('SCHEDULED');
+    expect(prisma.mediaAsset.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [mediaAssetId] },
+        workspaceId: wsId,
+        deletedAt: null,
+        processingState: 'READY',
+      },
+      select: { id: true, storageKey: true },
+    });
 
     // Verify mockTx publication calls
     expect(mockTx.publication.create).toHaveBeenCalledTimes(2);

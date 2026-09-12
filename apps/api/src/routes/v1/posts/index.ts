@@ -100,10 +100,13 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         idempotencyKey,
       });
     } catch (error: unknown) {
-      if (error instanceof CreatePostError && error.code === 'SOCIAL_ACCOUNT_NOT_FOUND') {
+      if (
+        error instanceof CreatePostError &&
+        (error.code === 'SOCIAL_ACCOUNT_NOT_FOUND' || error.code === 'MEDIA_ASSET_NOT_FOUND')
+      ) {
         return reply
           .status(404)
-          .send(err('SOCIAL_ACCOUNT_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
+          .send(err(error.code, 'NOT_FOUND', error.message, request.id));
       }
       if (error instanceof CreatePostError && error.code === 'MISSION_NOT_FOUND') {
         return reply
