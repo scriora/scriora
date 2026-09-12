@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { nanoid } from 'nanoid';
 import type { OutboxCommandPayload } from '../../contracts/outbox.contract.js';
 import type {
@@ -6,6 +6,24 @@ import type {
   PublicationResponseVO,
 } from '../../contracts/publication.contract.js';
 import type { PrismaClient } from '../../db/client.js';
+
+const APPROVAL_RAW_TOKEN_BYTES = 16;
+const APPROVAL_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
+
+function generateApprovalToken(): { rawToken: string; tokenHash: string } {
+  const rawToken = randomBytes(APPROVAL_RAW_TOKEN_BYTES).toString('hex');
+  const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+  return { rawToken, tokenHash };
+}
+
+function buildApprovalMagicLink(rawToken: string): string {
+  const base = (
+    process.env.API_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    'http://localhost:4000'
+  ).replace(/\/$/, '');
+  return `${base}/v1/approve/${rawToken}`;
+}
 
 export function computePublicationFingerprint(payload: {
   workspaceId: string;
@@ -28,8 +46,20 @@ export async function createPublicationWithOutbox(
 ): Promise<{
   publication: PublicationResponseVO;
   publishAttemptId: string;
-  outboxCommandId: string;
+  outboxCommandId: string | null;
+  requiresApproval: boolean;
+  approvalId?: string;
+  approvalToken?: string;
+  approvalUrl?: string;
 }> {
+  const workspace = await db.workspace.findUnique({
+    where: { id: dto.workspaceId },
+    select: { id: true, requiresApproval: true },
+  });
+  if (!workspace) {
+    throw new Error('WORKSPACE_NOT_FOUND');
+  }
+
   // 1. Invariant check: Variant and Account must belong to the specified workspace
   const variant = await db.contentVariant.findFirst({
     where: { id: dto.contentVariantId, workspaceId: dto.workspaceId },
@@ -53,7 +83,12 @@ export async function createPublicationWithOutbox(
     scheduledAt: dto.scheduledAt ?? null,
   });
 
-  const publicationStatus = dto.scheduledAt && dto.scheduledAt > new Date() ? 'SCHEDULED' : 'READY';
+  const requiresApproval = workspace.requiresApproval;
+  const publicationStatus = requiresApproval
+    ? 'REQUIRES_APPROVAL'
+    : dto.scheduledAt && dto.scheduledAt > new Date()
+      ? 'SCHEDULED'
+      : 'READY';
 
   // 2. Atomic Database Transaction Boundary
   return await db.$transaction(async (tx) => {
@@ -82,30 +117,64 @@ export async function createPublicationWithOutbox(
       },
     });
 
-    const outboxPayload: OutboxCommandPayload = {
-      publicationId: publication.id,
-      publishAttemptId: attempt.id,
-      workspaceId: dto.workspaceId,
-      socialAccountId: dto.socialAccountId,
-      contentVariantId: dto.contentVariantId,
-      platform: account.platform,
-      body: variant.body,
-      scheduledAt: dto.scheduledAt ? dto.scheduledAt.toISOString() : null,
-      fingerprint,
-      idempotencyKey,
-    };
+    let outboxCommandId: string | null = null;
+    let approvalId: string | undefined;
+    let approvalToken: string | undefined;
+    let approvalUrl: string | undefined;
 
-    const outbox = await tx.outboxCommand.create({
-      data: {
-        workspaceId: dto.workspaceId,
+    if (!requiresApproval) {
+      const outboxPayload: OutboxCommandPayload = {
         publicationId: publication.id,
         publishAttemptId: attempt.id,
-        commandType: 'DISPATCH_PUBLICATION',
-        payload: outboxPayload as unknown as object,
-        status: 'PENDING',
-        availableAt: dto.scheduledAt ?? new Date(),
-      },
-    });
+        workspaceId: dto.workspaceId,
+        socialAccountId: dto.socialAccountId,
+        contentVariantId: dto.contentVariantId,
+        platform: account.platform,
+        body: variant.body,
+        scheduledAt: dto.scheduledAt ? dto.scheduledAt.toISOString() : null,
+        fingerprint,
+        idempotencyKey,
+      };
+
+      const outbox = await tx.outboxCommand.create({
+        data: {
+          workspaceId: dto.workspaceId,
+          publicationId: publication.id,
+          publishAttemptId: attempt.id,
+          commandType: 'DISPATCH_PUBLICATION',
+          payload: outboxPayload as unknown as object,
+          status: 'PENDING',
+          availableAt: dto.scheduledAt ?? new Date(),
+        },
+      });
+      outboxCommandId = outbox.id;
+    } else {
+      const approval = await tx.approval.create({
+        data: {
+          workspaceId: dto.workspaceId,
+          resourceType: 'PUBLICATION',
+          resourceId: publication.id,
+          requestedByUserId: dto.createdByUserId ?? null,
+          status: 'PENDING',
+        },
+      });
+
+      const { rawToken, tokenHash } = generateApprovalToken();
+      const nonce = randomBytes(16).toString('hex');
+      await tx.approvalToken.create({
+        data: {
+          workspaceId: dto.workspaceId,
+          approvalId: approval.id,
+          tokenHash,
+          nonce,
+          expiresAt: new Date(Date.now() + APPROVAL_TOKEN_TTL_MS),
+        },
+      });
+
+      approvalId = approval.id;
+      approvalToken = rawToken;
+      approvalUrl = buildApprovalMagicLink(rawToken);
+    }
 
     return {
       publication: {
@@ -124,7 +193,11 @@ export async function createPublicationWithOutbox(
         updatedAt: publication.updatedAt,
       },
       publishAttemptId: attempt.id,
-      outboxCommandId: outbox.id,
+      outboxCommandId,
+      requiresApproval,
+      ...(approvalId && approvalToken && approvalUrl
+        ? { approvalId, approvalToken, approvalUrl }
+        : {}),
     };
   });
 }

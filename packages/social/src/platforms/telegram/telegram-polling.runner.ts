@@ -28,7 +28,9 @@ export async function runTelegramPolling(options: PollingRunnerOptions): Promise
 
   let offset = 0;
 
-  console.log(`[Telegram C2] Polling runner started for admin ID: ${adminChatId || 'ANY'}`);
+  console.log(
+    `[Telegram C2] Polling runner started for admin ID: ${adminChatId || 'UNSET (fail-closed)'}`
+  );
 
   while (!signal?.aborted) {
     try {
