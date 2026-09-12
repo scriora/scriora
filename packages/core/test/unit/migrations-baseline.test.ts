@@ -17,4 +17,13 @@ describe('prisma migrations baseline', () => {
     expect(sql).toContain('CREATE UNIQUE INDEX "approvals_pending_resource_key"');
     expect(sql).toMatch(/WHERE\s+"status"\s*=\s*'PENDING'/);
   });
+
+  it('includes the refresh session rotation table', () => {
+    const refreshSql = readFileSync(
+      join(migrationsDir, '20260912140000_refresh_sessions/migration.sql'),
+      'utf8'
+    );
+    expect(refreshSql).toContain('CREATE TABLE "refresh_sessions"');
+    expect(refreshSql).toContain('CREATE UNIQUE INDEX "refresh_sessions_token_hash_key"');
+  });
 });
