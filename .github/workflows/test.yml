@@ -60,6 +60,8 @@ jobs:
             filter: "scriora-social"
           - name: "packages/agent"
             filter: "scriora-agent"
+          - name: "packages/mcp"
+            filter: "scriora-mcp"
     steps:
       - uses: actions/checkout@v4
       - name: Initialize PostgreSQL extensions

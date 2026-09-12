@@ -2,6 +2,9 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   adaptiveScheduleService,
+  CreatePostError,
+  type CreateUnifiedPostResult,
+  createUnifiedPost,
   crossPostOptimizer,
   defaultDateTimeService,
   PaginationQuerySchema,
@@ -11,6 +14,7 @@ import {
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
+import { maybeSendTelegramApprovalRequests } from '../../../lib/approval-delivery.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
@@ -63,27 +67,36 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
     const idempotencyKey = headerKey || bodyKey || crypto.randomUUID();
     const workspaceId = request.workspace!.id;
     const userId = request.authContext!.userId;
+    const requiresApproval = request.workspace!.requiresApproval;
 
-    // Idempotency check: 24h window (§7.4)
-    const existingOutbox = await prisma.outboxCommand.findFirst({
-      where: {
-        publication: {
-          idempotencyKey: { startsWith: idempotencyKey },
-          workspaceId,
-        },
-        createdAt: { gt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
-      },
-      include: {
-        publication: true,
-      },
-    });
+    let result: CreateUnifiedPostResult;
+    try {
+      result = await createUnifiedPost(prisma, {
+        workspaceId,
+        createdByUserId: userId,
+        requiresApproval,
+        body,
+        targets,
+        ...(media ? { media } : {}),
+        ...(mediaUrls ? { mediaUrls } : {}),
+        ...(scheduledAt ? { scheduledAt } : {}),
+        idempotencyKey,
+      });
+    } catch (error: unknown) {
+      if (error instanceof CreatePostError && error.code === 'SOCIAL_ACCOUNT_NOT_FOUND') {
+        return reply
+          .status(404)
+          .send(err('SOCIAL_ACCOUNT_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
+      }
+      throw error;
+    }
 
-    if (existingOutbox) {
+    if (result.kind === 'idempotent_replay') {
       return reply.status(202).send(
         ok(
           {
-            publicationId: existingOutbox.publicationId,
-            status: existingOutbox.publication.status,
+            publicationId: result.publicationId,
+            status: result.status,
             idempotentReplay: true,
           },
           request.id
@@ -91,190 +104,21 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    // Verify all targeted social accounts belong to this workspace
-    const accountIds = targets.map((t) => t.socialAccountId);
-    const validAccounts = await prisma.socialAccount.findMany({
-      where: { id: { in: accountIds }, workspaceId },
-    });
-
-    if (validAccounts.length !== targets.length) {
-      return reply
-        .status(404)
-        .send(
-          err(
-            'SOCIAL_ACCOUNT_NOT_FOUND',
-            'NOT_FOUND',
-            'One or more targeted social accounts do not exist in this workspace',
-            request.id
-          )
+    if (result.pendingTelegramApprovals.length > 0) {
+      try {
+        await maybeSendTelegramApprovalRequests(result.pendingTelegramApprovals);
+      } catch (deliveryError: unknown) {
+        request.log.warn(
+          { err: deliveryError },
+          'Telegram approval delivery failed; raw token still in API response'
         );
-    }
-
-    const isScheduled = !!scheduledAt;
-    const requiresApproval = request.workspace!.requiresApproval;
-    const initialStatus = requiresApproval
-      ? 'REQUIRES_APPROVAL'
-      : isScheduled
-        ? 'SCHEDULED'
-        : 'READY';
-
-    // Resolve media URLs: direct URLs or mediaAsset storage keys
-    let resolvedMediaUrls: string[] = mediaUrls || [];
-    if (media && media.length > 0 && resolvedMediaUrls.length === 0) {
-      const assetIds = media.map((m) => m.mediaAssetId);
-      const assets = await prisma.mediaAsset.findMany({
-        where: { id: { in: assetIds } },
-        select: { storageKey: true },
-      });
-      resolvedMediaUrls = assets
-        .map((a) => a.storageKey)
-        .filter((key): key is string => Boolean(key));
-      if (resolvedMediaUrls.length === 0) {
-        resolvedMediaUrls = assetIds;
       }
     }
-
-    // Atomic creation of Content -> Variants -> Publications -> Attempts -> Outbox
-    const result = await prisma.$transaction(async (tx) => {
-      // 1. Create master Content record
-      const content = await tx.content.create({
-        data: {
-          workspaceId,
-          title: body.slice(0, 80),
-          body,
-          status: 'READY',
-          createdByUserId: userId,
-        },
-      });
-
-      const publications = [];
-
-      for (const target of targets) {
-        const targetBody = target.customBody?.trim() || body;
-
-        // 2. Create ContentVariant
-        const variant = await tx.contentVariant.create({
-          data: {
-            workspaceId,
-            contentId: content.id,
-            socialAccountId: target.socialAccountId,
-            body: targetBody,
-            metadata: JSON.parse(
-              JSON.stringify({
-                ...(target.platformOptions || {}),
-                mediaUrls: resolvedMediaUrls,
-              })
-            ),
-            status: 'READY',
-          },
-        });
-
-        const targetIdempotency = `${idempotencyKey}:${target.socialAccountId}`;
-        const fingerprint = crypto
-          .createHash('sha256')
-          .update(`${content.id}:${target.socialAccountId}:${targetBody}`)
-          .digest('hex');
-
-        // 3. Create Publication
-        const publication = await tx.publication.create({
-          data: {
-            workspaceId,
-            contentVariantId: variant.id,
-            socialAccountId: target.socialAccountId,
-            status: initialStatus,
-            scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-            idempotencyKey: targetIdempotency,
-            fingerprint,
-            createdByUserId: userId,
-          },
-        });
-
-        // 4. Create initial PublishAttempt
-        const attempt = await tx.publishAttempt.create({
-          data: {
-            workspaceId,
-            publicationId: publication.id,
-            attemptNumber: 1,
-            status: 'RESERVED',
-            idempotencyKey: targetIdempotency,
-            fingerprint,
-          },
-        });
-
-        // 5. Create OutboxCommand (Transactional Outbox Pattern)
-        const payloadJson = JSON.parse(
-          JSON.stringify({
-            workspaceId,
-            body: targetBody,
-            platform: target.platform,
-            socialAccountId: target.socialAccountId,
-            mediaUrls: resolvedMediaUrls,
-            idempotencyKey: targetIdempotency,
-            fingerprint,
-            options: target.platformOptions || {},
-          })
-        );
-
-        const outboxCmd = await tx.outboxCommand.create({
-          data: {
-            workspaceId,
-            publicationId: publication.id,
-            publishAttemptId: attempt.id,
-            commandType: 'SOCIAL_PUBLISH',
-            payload: payloadJson,
-            status: 'PENDING',
-            availableAt: scheduledAt ? new Date(scheduledAt) : new Date(),
-          },
-        });
-
-        // 6. If approval required, create Approval & ApprovalToken (§14)
-        if (requiresApproval) {
-          const approval = await tx.approval.create({
-            data: {
-              workspaceId,
-              resourceType: 'PUBLICATION',
-              resourceId: publication.id,
-              requestedByUserId: userId,
-              status: 'PENDING',
-            },
-          });
-
-          const rawToken = crypto.randomBytes(32).toString('hex');
-          const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-          const nonce = crypto.randomBytes(16).toString('hex');
-          await tx.approvalToken.create({
-            data: {
-              workspaceId,
-              approvalId: approval.id,
-              tokenHash,
-              nonce,
-              expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000), // 72 hours
-            },
-          });
-        }
-
-        publications.push({
-          publicationId: publication.id,
-          platform: target.platform,
-          status: publication.status,
-          outboxCommandId: outboxCmd.id,
-        });
-      }
-
-      return {
-        contentId: content.id,
-        publications,
-      };
-    });
 
     return reply.status(202).send(
       ok(
         {
-          message: isScheduled
-            ? 'Publication scheduled'
-            : requiresApproval
-              ? 'Submitted for approval'
-              : 'Publication queued for dispatch',
+          message: result.message,
           contentId: result.contentId,
           publications: result.publications,
         },

@@ -2,7 +2,10 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { ApprovalDecisionSchema, prisma } from 'scriora-core';
 import { z } from 'zod';
+import { applyApprovalDecisionToPublication } from '../../../lib/approval-publication-decision.js';
+import { maybeDispatchPublicationRequested } from '../../../lib/publication-requested.js';
 import { err, ok } from '../../../lib/response.js';
+import type { EnqueuedApprovedOutbox } from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
@@ -153,7 +156,11 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
     const approval = tokenRecord.approval;
 
-    await prisma.$transaction(async (tx) => {
+    const outcome: {
+      applied: boolean;
+      publicationStatus: string | null;
+      queued: EnqueuedApprovedOutbox;
+    } = await prisma.$transaction(async (tx) => {
       // Mark token consumed
       await tx.approvalToken.update({
         where: { id: tokenRecord.id },
@@ -170,22 +177,33 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      // If approval is for a PUBLICATION
-      if (approval.resourceType === 'PUBLICATION') {
-        const newPublicationStatus = decision === 'APPROVED' ? 'READY' : 'CANCELLED';
-        await tx.publication.update({
-          where: { id: approval.resourceId },
-          data: { status: newPublicationStatus },
-        });
-
-        // If rejected, remove pending outbox command
-        if (decision === 'REJECTED') {
-          await tx.outboxCommand.deleteMany({
-            where: { publicationId: approval.resourceId, status: 'PENDING' },
-          });
-        }
+      if (approval.resourceType !== 'PUBLICATION') {
+        return {
+          applied: true,
+          publicationStatus: null,
+          queued: { outboxCommandId: null, availableAt: null, status: null, created: false },
+        };
       }
+
+      return applyApprovalDecisionToPublication(tx, approval.resourceId, decision);
     });
+
+    if (!outcome.applied) {
+      return reply
+        .status(409)
+        .send(
+          err(
+            'PUBLICATION_STATUS_CONFLICT',
+            'CONFLICT',
+            `Publication is ${outcome.publicationStatus ?? 'missing'}; approval was recorded without changing publication status`,
+            request.id
+          )
+        );
+    }
+
+    if (decision === 'APPROVED') {
+      await maybeDispatchPublicationRequested(outcome.queued);
+    }
 
     return reply.status(200).send(
       ok(

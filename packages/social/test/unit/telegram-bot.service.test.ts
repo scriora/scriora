@@ -1,6 +1,11 @@
 import axios from 'axios';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TelegramBotService } from '../../src/platforms/telegram/telegram-bot.service.js';
+import {
+  buildTelegramApprovalCallbackData,
+  formatTelegramCreatePostResult,
+  TELEGRAM_CALLBACK_DATA_MAX_BYTES,
+  TelegramBotService,
+} from '../../src/platforms/telegram/telegram-bot.service.js';
 
 vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
@@ -26,6 +31,59 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
     expect(botService.isAuthorized('987654321')).toBe(true);
     expect(botService.isAuthorized(987654321)).toBe(true);
     expect(botService.isAuthorized('9999999999')).toBe(false);
+  });
+
+  it('fails closed when adminChatId is unset', () => {
+    const openBot = new TelegramBotService({ botToken });
+    expect(openBot.adminChatId).toBeUndefined();
+    expect(openBot.isAuthorized('987654321')).toBe(false);
+    expect(openBot.isAuthorized(1)).toBe(false);
+  });
+
+  it('denies /post when adminChatId is unset', async () => {
+    const openBot = new TelegramBotService({ botToken });
+    mockedAxios.post.mockResolvedValueOnce({ data: { ok: true, result: { message_id: 1 } } });
+
+    const mockContext = {
+      getSystemStatus: vi.fn(),
+      listAccounts: vi.fn(),
+      createPost: vi.fn().mockResolvedValue({ publicationCount: 1 }),
+      handleApprovalDecision: vi.fn(),
+    };
+
+    const result = await openBot.handleUpdate(
+      {
+        update_id: 99,
+        message: {
+          message_id: 99,
+          from: { id: 987654321, is_bot: false, first_name: 'Anyone' },
+          chat: { id: 987654321, type: 'private' },
+          text: '/post this must not publish',
+        },
+      },
+      mockContext
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.action).toBe('unauthorized_sender');
+    expect(mockContext.createPost).not.toHaveBeenCalled();
+  });
+
+  it('formats an approval-hold message instead of claiming the post was published', () => {
+    expect(
+      formatTelegramCreatePostResult({
+        publicationCount: 2,
+        requiresApproval: true,
+        message: 'Submitted for approval',
+      })
+    ).toContain('تم الإرسال للاعتماد');
+    expect(
+      formatTelegramCreatePostResult({
+        publicationCount: 2,
+        requiresApproval: true,
+        message: 'Submitted for approval',
+      })
+    ).not.toContain('تم النشر بنجاح');
   });
 
   it('rejects commands from unauthorized senders with zero-trust guardrail', async () => {
@@ -147,6 +205,45 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
     });
   });
 
+  it('reports approval hold after /post when createPost requires approval', async () => {
+    mockedAxios.post
+      .mockResolvedValueOnce({ data: { ok: true, result: { message_id: 106 } } })
+      .mockResolvedValueOnce({ data: { ok: true, result: { message_id: 107 } } });
+
+    const mockContext = {
+      getSystemStatus: vi.fn(),
+      listAccounts: vi.fn(),
+      createPost: vi.fn().mockResolvedValue({
+        publicationCount: 2,
+        requiresApproval: true,
+        message: 'Submitted for approval',
+      }),
+      handleApprovalDecision: vi.fn(),
+    };
+
+    const result = await botService.handleUpdate(
+      {
+        update_id: 14,
+        message: {
+          message_id: 14,
+          from: { id: 987654321, is_bot: false, first_name: 'Ameer' },
+          chat: { id: 987654321, type: 'private' },
+          text: '/post يحتاج اعتماد',
+        },
+      },
+      mockContext
+    );
+
+    expect(result.handled).toBe(true);
+    expect(result.action).toBe('post_held_for_approval');
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.stringContaining('/sendMessage'),
+      expect.objectContaining({
+        text: expect.stringContaining('تم الإرسال للاعتماد'),
+      })
+    );
+  });
+
   it('handles inline button callback queries for interactive approvals', async () => {
     mockedAxios.post
       .mockResolvedValueOnce({ data: { ok: true } }) // answerCallbackQuery
@@ -186,6 +283,24 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
         text: expect.stringContaining('تم الاعتماد'),
       })
     );
+  });
+
+  it('keeps approve/reject callback_data within Telegram 64-byte limit for 32-hex tokens', () => {
+    const token = 'a'.repeat(32);
+    const { approve, reject } = buildTelegramApprovalCallbackData(token);
+
+    expect(Buffer.byteLength(approve, 'utf8')).toBeLessThanOrEqual(
+      TELEGRAM_CALLBACK_DATA_MAX_BYTES
+    );
+    expect(Buffer.byteLength(reject, 'utf8')).toBeLessThanOrEqual(TELEGRAM_CALLBACK_DATA_MAX_BYTES);
+    expect(approve).toBe(`approve:${token}`);
+    expect(reject).toBe(`reject:${token}`);
+  });
+
+  it('rejects a 64-hex token that would overflow Telegram callback_data', () => {
+    const legacyToken = 'ab'.repeat(32);
+    expect(legacyToken).toHaveLength(64);
+    expect(() => buildTelegramApprovalCallbackData(legacyToken)).toThrow(/callback_data exceeds/);
   });
 
   it('formats and sends approval request with inline action buttons', async () => {

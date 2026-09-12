@@ -19,7 +19,11 @@ describe('Publication Service Unit Tests', () => {
   });
 
   it('atomically creates Publication, PublishAttempt, and OutboxCommand in one transaction', async () => {
+    let createdTx: { outboxCommand: { create: ReturnType<typeof vi.fn> } };
     const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: false }),
+      },
       contentVariant: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'variant-1',
@@ -64,6 +68,7 @@ describe('Publication Service Unit Tests', () => {
             }),
           },
         };
+        createdTx = tx;
         return await callback(tx);
       }),
     };
@@ -77,11 +82,20 @@ describe('Publication Service Unit Tests', () => {
     expect(result.publication.id).toBe('pub-1');
     expect(result.publishAttemptId).toBe('attempt-1');
     expect(result.outboxCommandId).toBe('outbox-1');
+    expect(result.requiresApproval).toBe(false);
     expect(mockDb.$transaction).toHaveBeenCalledTimes(1);
+    expect(createdTx.outboxCommand.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ commandType: 'SOCIAL_PUBLISH' }),
+      })
+    );
   });
 
   it('rejects if ContentVariant does not belong to the workspace', async () => {
     const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-attacker', requiresApproval: false }),
+      },
       contentVariant: { findFirst: vi.fn().mockResolvedValue(null) },
       socialAccount: { findFirst: vi.fn().mockResolvedValue({ id: 'acc-1' }) },
       $transaction: vi.fn(),
@@ -99,6 +113,9 @@ describe('Publication Service Unit Tests', () => {
 
   it('rejects if SocialAccount does not belong to the workspace', async () => {
     const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: false }),
+      },
       contentVariant: {
         findFirst: vi.fn().mockResolvedValue({ id: 'variant-1', workspaceId: 'ws-1' }),
       },
@@ -122,6 +139,9 @@ describe('Publication Service Unit Tests', () => {
     let createdOutboxData: any;
 
     const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: false }),
+      },
       contentVariant: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'variant-1',
@@ -179,5 +199,160 @@ describe('Publication Service Unit Tests', () => {
     expect(createdPublicationData.createdByUserId).toBe('user-1');
     expect(createdOutboxData.payload.scheduledAt).toBe(futureDate.toISOString());
     expect(createdOutboxData.availableAt).toEqual(futureDate);
+  });
+
+  it('reads workspace.requiresApproval and does not create a sweepable outbox', async () => {
+    let createdPublicationData: Record<string, unknown> | undefined;
+    let createdTokenData: Record<string, unknown> | undefined;
+
+    const mockTx = {
+      publication: {
+        create: vi.fn().mockImplementation(async ({ data }) => {
+          createdPublicationData = data;
+          return {
+            id: 'pub-hold-1',
+            ...data,
+            publishedAt: null,
+            externalPostId: null,
+            externalPostUrl: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }),
+      },
+      publishAttempt: {
+        create: vi.fn().mockResolvedValue({ id: 'attempt-hold-1' }),
+      },
+      outboxCommand: {
+        create: vi.fn(),
+      },
+      approval: {
+        create: vi.fn().mockResolvedValue({ id: 'approval-hold-1' }),
+      },
+      approvalToken: {
+        create: vi.fn().mockImplementation(async ({ data }) => {
+          createdTokenData = data;
+          return { id: 'token-hold-1', ...data };
+        }),
+      },
+    };
+
+    const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: true }),
+      },
+      contentVariant: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'variant-1',
+          workspaceId: 'ws-1',
+          body: 'Needs approval',
+        }),
+      },
+      socialAccount: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'acc-1',
+          workspaceId: 'ws-1',
+          platform: 'LINKEDIN',
+        }),
+      },
+      $transaction: vi.fn().mockImplementation(async (callback) => callback(mockTx)),
+    };
+
+    const result = await createPublicationWithOutbox(mockDb as any, {
+      workspaceId: 'ws-1',
+      contentVariantId: 'variant-1',
+      socialAccountId: 'acc-1',
+      createdByUserId: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(result.requiresApproval).toBe(true);
+    expect(result.outboxCommandId).toBeNull();
+    expect(result.approvalId).toBe('approval-hold-1');
+    expect(result.approvalToken).toMatch(/^[0-9a-f]{32}$/);
+    expect(result.approvalUrl).toContain(`/v1/approve/${result.approvalToken}`);
+    expect(createdPublicationData?.status).toBe('REQUIRES_APPROVAL');
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+    expect(mockTx.approval.create).toHaveBeenCalledTimes(1);
+    expect(createdTokenData?.tokenHash).not.toBe(result.approvalToken);
+    expect(JSON.stringify(createdTokenData)).not.toContain(result.approvalToken);
+  });
+
+  it('does not create an outbox for scheduled + workspace.requiresApproval', async () => {
+    const futureDate = new Date(Date.now() + 86400000);
+    let createdPublicationData: Record<string, unknown> | undefined;
+
+    const mockTx = {
+      publication: {
+        create: vi.fn().mockImplementation(async ({ data }) => {
+          createdPublicationData = data;
+          return {
+            id: 'pub-sched-hold',
+            ...data,
+            publishedAt: null,
+            externalPostId: null,
+            externalPostUrl: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+        }),
+      },
+      publishAttempt: {
+        create: vi.fn().mockResolvedValue({ id: 'attempt-sched-hold' }),
+      },
+      outboxCommand: { create: vi.fn() },
+      approval: { create: vi.fn().mockResolvedValue({ id: 'approval-sched-hold' }) },
+      approvalToken: { create: vi.fn().mockResolvedValue({ id: 'token-sched-hold' }) },
+    };
+
+    const mockDb = {
+      workspace: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'ws-1', requiresApproval: true }),
+      },
+      contentVariant: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'variant-1',
+          workspaceId: 'ws-1',
+          body: 'Scheduled approval post',
+        }),
+      },
+      socialAccount: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'acc-1',
+          workspaceId: 'ws-1',
+          platform: 'X',
+        }),
+      },
+      $transaction: vi.fn().mockImplementation(async (callback) => callback(mockTx)),
+    };
+
+    const result = await createPublicationWithOutbox(mockDb as any, {
+      workspaceId: 'ws-1',
+      contentVariantId: 'variant-1',
+      socialAccountId: 'acc-1',
+      scheduledAt: futureDate,
+    });
+
+    expect(result.outboxCommandId).toBeNull();
+    expect(createdPublicationData?.status).toBe('REQUIRES_APPROVAL');
+    expect(createdPublicationData?.scheduledAt).toEqual(futureDate);
+    expect(mockTx.outboxCommand.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the workspace does not exist', async () => {
+    const mockDb = {
+      workspace: { findUnique: vi.fn().mockResolvedValue(null) },
+      contentVariant: { findFirst: vi.fn() },
+      socialAccount: { findFirst: vi.fn() },
+      $transaction: vi.fn(),
+    };
+
+    await expect(
+      createPublicationWithOutbox(mockDb as any, {
+        workspaceId: '11111111-1111-4111-8111-111111111111',
+        contentVariantId: '22222222-2222-4222-8222-222222222222',
+        socialAccountId: '33333333-3333-4333-8333-333333333333',
+      })
+    ).rejects.toThrow('WORKSPACE_NOT_FOUND');
+    expect(mockDb.$transaction).not.toHaveBeenCalled();
   });
 });

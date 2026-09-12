@@ -40,6 +40,7 @@ describe('API Routes — Health & Publications', () => {
       },
       publishAttemptId: 'attempt-test-uuid',
       outboxCommandId: 'outbox-test-uuid',
+      requiresApproval: false,
     });
 
     const response = await app.inject({

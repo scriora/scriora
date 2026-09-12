@@ -9,6 +9,66 @@
 import axios from 'axios';
 import { PlatformError } from '../../errors/social.error.js';
 
+/** Telegram Bot API limit for `callback_data` (UTF-8 bytes). */
+export const TELEGRAM_CALLBACK_DATA_MAX_BYTES = 64;
+
+export function buildTelegramApprovalCallbackData(token: string): {
+  approve: string;
+  reject: string;
+} {
+  const approve = `approve:${token}`;
+  const reject = `reject:${token}`;
+  assertTelegramCallbackDataLength(approve);
+  assertTelegramCallbackDataLength(reject);
+  return { approve, reject };
+}
+
+export function assertTelegramCallbackDataLength(data: string): void {
+  const bytes = Buffer.byteLength(data, 'utf8');
+  if (bytes > TELEGRAM_CALLBACK_DATA_MAX_BYTES) {
+    throw new PlatformError({
+      message: `Telegram callback_data exceeds ${TELEGRAM_CALLBACK_DATA_MAX_BYTES} bytes (got ${bytes})`,
+      code: 'CALLBACK_DATA_TOO_LONG',
+      category: 'VALIDATION',
+      retryable: false,
+    });
+  }
+}
+
+function sanitizeTelegramPlainText(value: string): string {
+  return value.replace(/[<>&]/g, '');
+}
+
+export function formatTelegramCreatePostResult(
+  result: {
+    publicationCount: number;
+    requiresApproval?: boolean | undefined;
+    message?: string | undefined;
+  },
+  options?: { photo?: boolean }
+): string {
+  const count = result.publicationCount;
+  if (result.requiresApproval) {
+    const detail = result.message ? `\n${sanitizeTelegramPlainText(result.message)}` : '';
+    return [
+      `🛡️ <b>تم الإرسال للاعتماد</b>`,
+      ``,
+      `تم إنشاء <b>${count}</b> منشورات بانتظار الاعتماد. لن يُنشأ Outbox قابل للمسح قبل الموافقة.${detail}`,
+    ].join('\n');
+  }
+
+  if (options?.photo) {
+    return `✅ <b>تم استلام ونشر الصورة بنجاح!</b> 🚀\n\nتم إرسال المنشور مع الصورة إلى <b>${count}</b> وجهات بنجاح.`;
+  }
+
+  return `✅ <b>تم النشر بنجاح!</b> 🚀\n\nتم إرسال المنشور إلى <b>${count}</b> وجهات بنجاح عبر مسار الـ Transactional Outbox.`;
+}
+
+export function formatTelegramCreatePostError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  return `⚠️ <b>تعذر إنشاء المنشور</b>\n<code>${sanitizeTelegramPlainText(message)}</code>`;
+}
+
 export interface TelegramBotConfig {
   botToken: string;
   adminChatId?: string | number | undefined;
@@ -79,10 +139,12 @@ export interface TelegramDbContext {
     recentPublicationsCount: number;
   }>;
   listAccounts: () => Promise<Array<{ platform: string; name: string; status: string }>>;
-  createPost: (params: {
-    text: string;
-    mediaUrls?: string[] | undefined;
-  }) => Promise<{ publicationCount: number; externalUrls?: string[] | undefined }>;
+  createPost: (params: { text: string; mediaUrls?: string[] | undefined }) => Promise<{
+    publicationCount: number;
+    requiresApproval?: boolean | undefined;
+    message?: string | undefined;
+    externalUrls?: string[] | undefined;
+  }>;
   handleApprovalDecision: (token: string, decision: 'APPROVED' | 'REJECTED') => Promise<boolean>;
   handleAccountConnection?: (
     token: string,
@@ -123,9 +185,11 @@ export class TelegramBotService {
 
   /**
    * Verify if the sender is authorized as an admin.
+   * Fail-closed: when `adminChatId` is unset, nobody is authorized
+   * (including `/post`). There is no development allow-all fallback.
    */
   public isAuthorized(senderId: string | number): boolean {
-    if (!this.adminChatId) return true; // If not set, allow all (or development mode)
+    if (!this.adminChatId) return false;
     return String(senderId) === this.adminChatId;
   }
 
@@ -275,13 +339,14 @@ export class TelegramBotService {
 
     const approveText = params.approveButtonText ?? '✅ اعتماد ونشر فوري';
     const rejectText = params.rejectButtonText ?? '❌ رفض وإلغاء';
+    const callbackData = buildTelegramApprovalCallbackData(params.token);
 
     return this.sendMessage(params.chatId, message, {
       replyMarkup: {
         inline_keyboard: [
           [
-            { text: approveText, callback_data: `approve:${params.token}` },
-            { text: rejectText, callback_data: `reject:${params.token}` },
+            { text: approveText, callback_data: callbackData.approve },
+            { text: rejectText, callback_data: callbackData.reject },
           ],
         ],
       },
@@ -454,13 +519,17 @@ export class TelegramBotService {
         }
 
         await this.sendMessage(chatId, `⏳ <i>جاري معالجة المنشور وتوزيعه على المنصات...</i>`);
-        const result = await context.createPost({ text: postContent });
-
-        await this.sendMessage(
-          chatId,
-          `✅ <b>تم النشر بنجاح!</b> 🚀\n\nتم إرسال المنشور إلى <b>${result.publicationCount}</b> وجهات بنجاح عبر مسار الـ Transactional Outbox.`
-        );
-        return { handled: true, action: 'post_created' };
+        try {
+          const result = await context.createPost({ text: postContent });
+          await this.sendMessage(chatId, formatTelegramCreatePostResult(result));
+          return {
+            handled: true,
+            action: result.requiresApproval ? 'post_held_for_approval' : 'post_created',
+          };
+        } catch (postError: unknown) {
+          await this.sendMessage(chatId, formatTelegramCreatePostError(postError));
+          return { handled: true, action: 'post_failed' };
+        }
       }
 
       // Direct Photo Broadcast: When the admin sends a photo from gallery with or without caption
@@ -479,16 +548,22 @@ export class TelegramBotService {
             chatId,
             `⏳ <i>جاري معالجة الصورة ونشرها على الوجهات المتصلة...</i>`
           );
-          const result = await context.createPost({
-            text: caption,
-            mediaUrls: photoUrl ? [photoUrl] : undefined,
-          });
-
-          await this.sendMessage(
-            chatId,
-            `✅ <b>تم استلام ونشر الصورة بنجاح!</b> 🚀\n\nتم إرسال المنشور مع الصورة إلى <b>${result.publicationCount}</b> وجهات بنجاح.`
-          );
-          return { handled: true, action: 'photo_post_created' };
+          try {
+            const result = await context.createPost({
+              text: caption,
+              mediaUrls: photoUrl ? [photoUrl] : undefined,
+            });
+            await this.sendMessage(chatId, formatTelegramCreatePostResult(result, { photo: true }));
+            return {
+              handled: true,
+              action: result.requiresApproval
+                ? 'photo_post_held_for_approval'
+                : 'photo_post_created',
+            };
+          } catch (postError: unknown) {
+            await this.sendMessage(chatId, formatTelegramCreatePostError(postError));
+            return { handled: true, action: 'photo_failed' };
+          }
         }
       }
     }
