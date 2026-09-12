@@ -9,19 +9,15 @@ via the standard MCP protocol. Enforce all governance boundaries.
 - Cannot bypass the Human Approval Gate under any circumstance
 - Cannot access social platform credentials directly
 - All tool inputs validated via Zod before execution
-- **Auth today is stdio-trusted.** There is no per-request API key / HMAC
-  verification in this process. `scriora_create_post` refuses unknown
-  `workspaceId` values and honors `workspace.requiresApproval` through the
-  same `createUnifiedPost` path as `POST /v1/posts`. It is not a substitute
-  for HTTP tenant auth; do not expose stdio MCP on an untrusted boundary.
-- Cross-tenant isolation depends on the host process (who can invoke the
-  tool), not on MCP-side membership checks.
+- **Workspace-scoped tools require a real workspace API key** (`SCRIORA_API_KEY` or `MCP_API_KEY`) whose `workspaceId` matches the tool argument. Membership of the key's user is required. A client-supplied `workspaceId` or `X-Workspace-Id` header is **not** authentication and cannot authorize writes to an arbitrary workspace.
+- When `MCP_SIGNING_SECRET` is set, workspace-scoped tools also require `MCP_REQUEST_SIGNATURE` (HMAC-SHA256 of `toolName:workspaceId`). API key lookup uses the same SHA-256(rawKey) hash as `POST /v1` — `MCP_API_KEY_SALT` is not mixed into the hash so keys issued by the HTTP API work unchanged.
+- `scriora_create_post` applies the agent autonomy gate: `publication.publish` is in `ALWAYS_REQUIRES_APPROVAL`, so MCP holds the Classic approval path even when `workspace.requiresApproval` is false or the workspace operating mode is `AUTONOMOUS`. Classic `POST /v1/posts` remains the HTTP enforcement path (`workspace.requiresApproval`).
 
 **Exposed Capabilities (Phase 1):**
-- create-content  -  Draft content for workspace
-- get-analytics  -  Read engagement metrics
-- request-approval  -  Submit content for human approval
-- get-mission-status  -  Read mission progress
+- `scriora_create_post` — create publications (approval hold; `posts:write`)
+- `scriora_list_social_accounts` — list accounts in the bound workspace
+- `scriora_optimize_cross_post` — copy heuristics (no workspace scope)
+- `scriora_get_smart_slots` — schedule heuristics (no workspace scope)
 
 **Transport:** stdio (default) | HTTP (optional)
 

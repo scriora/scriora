@@ -143,7 +143,8 @@ describe('createUnifiedPost', () => {
     expect(tx.outboxCommand.create).not.toHaveBeenCalled();
   });
 
-  it('replays an existing publication within the idempotency window', async () => {
+  it('replays an existing publication within the idempotency window using exact keys', async () => {
+    const idempotencyKey = '77777777-7777-4777-8777-777777777777';
     const db = {
       publication: {
         findFirst: vi.fn().mockResolvedValue({ id: 'existing-pub', status: 'READY' }),
@@ -157,7 +158,7 @@ describe('createUnifiedPost', () => {
       requiresApproval: false,
       body: 'Replay me',
       targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
-      idempotencyKey: '77777777-7777-4777-8777-777777777777',
+      idempotencyKey,
     });
 
     expect(result).toEqual({
@@ -165,7 +166,34 @@ describe('createUnifiedPost', () => {
       publicationId: 'existing-pub',
       status: 'READY',
     });
+    expect(db.publication.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        workspaceId,
+        idempotencyKey: { in: [idempotencyKey, `${idempotencyKey}:${accountId}`] },
+      }),
+    });
+    expect(JSON.stringify(db.publication.findFirst.mock.calls[0]![0])).not.toContain('startsWith');
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not treat a prefix of another idempotency key as a replay', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId }]);
+    const prefix = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+    await createUnifiedPost(db as any, {
+      workspaceId,
+      createdByUserId: userId,
+      requiresApproval: false,
+      body: 'Not a prefix match',
+      targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+      idempotencyKey: prefix,
+    });
+
+    const where = (db.publication.findFirst as ReturnType<typeof vi.fn>).mock.calls[0]![0].where;
+    expect(where.idempotencyKey).toEqual({ in: [prefix, `${prefix}:${accountId}`] });
+    expect(where.idempotencyKey.startsWith).toBeUndefined();
+    expect(tx.content.create).toHaveBeenCalled();
   });
 
   it('rejects targets whose social accounts are not in the workspace', async () => {

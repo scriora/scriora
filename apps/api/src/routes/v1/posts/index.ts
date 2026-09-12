@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   adaptiveScheduleService,
@@ -11,6 +10,7 @@ import {
   type PlatformTarget,
   PublishPayloadSchema,
   prisma,
+  resolveRequestIdempotencyKey,
   SocialPlatformSchema,
 } from 'scriora-core';
 import { z } from 'zod';
@@ -66,8 +66,18 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       scheduledAt,
       idempotencyKey: bodyKey,
     } = parseResult.data;
-    const headerKey = request.headers['idempotency-key'] as string | undefined;
-    const idempotencyKey = headerKey || bodyKey || crypto.randomUUID();
+    const resolvedKey = resolveRequestIdempotencyKey({
+      header: request.headers['idempotency-key'],
+      bodyKey,
+    });
+    if (!resolvedKey.ok) {
+      return reply.status(400).send(
+        err('VALIDATION_ERROR', 'VALIDATION_ERROR', resolvedKey.message, request.id, false, [
+          { field: 'Idempotency-Key', message: resolvedKey.message },
+        ])
+      );
+    }
+    const idempotencyKey = resolvedKey.key;
     const workspaceId = request.workspace!.id;
     const userId = request.authContext!.userId;
     const requiresApproval = request.workspace!.requiresApproval;

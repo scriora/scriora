@@ -20,3 +20,62 @@ export const ALWAYS_REQUIRES_APPROVAL = [
   'workspace.delete',
   'social_account.disconnect',
 ] as const;
+
+export type AlwaysApprovalAction = (typeof ALWAYS_REQUIRES_APPROVAL)[number];
+
+export function isAlwaysApprovalAction(action: string): action is AlwaysApprovalAction {
+  return (ALWAYS_REQUIRES_APPROVAL as readonly string[]).includes(action);
+}
+
+export type AutonomyGateDecision =
+  | { allowed: true; requiresApproval: false }
+  | { allowed: true; requiresApproval: true; reason: string }
+  | { allowed: false; code: string; reason: string };
+
+/**
+ * Minimal enforcement for agent / MCP dangerous actions.
+ *
+ * L4_AUTONOMOUS is not a bypass: ALWAYS_REQUIRES_APPROVAL still holds.
+ * Classic HTTP `POST /v1/posts` continues to use workspace.requiresApproval;
+ * this gate is the extra control plane for agent/MCP publication.publish.
+ */
+export function evaluateAutonomyGate(input: {
+  action: string;
+  autonomyLevel?: AutonomyLevel;
+  workspaceRequiresApproval?: boolean;
+  hasHumanApproval?: boolean;
+}): AutonomyGateDecision {
+  const always = isAlwaysApprovalAction(input.action);
+  const level = input.autonomyLevel;
+
+  if (level === AutonomyLevel.L0_OBSERVE && always) {
+    return {
+      allowed: false,
+      code: 'AUTONOMY_READ_ONLY',
+      reason: 'L0_OBSERVE cannot execute actions that always require approval',
+    };
+  }
+
+  const requiresApproval =
+    always ||
+    Boolean(input.workspaceRequiresApproval) ||
+    level === AutonomyLevel.L3_EXECUTE_APPROVE;
+
+  if (!requiresApproval) {
+    return { allowed: true, requiresApproval: false };
+  }
+
+  if (input.hasHumanApproval) {
+    return { allowed: true, requiresApproval: false };
+  }
+
+  return {
+    allowed: true,
+    requiresApproval: true,
+    reason: always
+      ? 'ALWAYS_REQUIRES_APPROVAL'
+      : level === AutonomyLevel.L3_EXECUTE_APPROVE
+        ? 'AUTONOMY_LEVEL_REQUIRES_APPROVAL'
+        : 'WORKSPACE_REQUIRES_APPROVAL',
+  };
+}

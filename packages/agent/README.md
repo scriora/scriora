@@ -10,6 +10,8 @@ It proposes. Humans and policies decide.
 - L2: Execute + notify
 - L3: Execute with pre-approval
 - L4: Autonomous within policy
+
+**Approval gate:** `evaluateAutonomyGate` enforces `ALWAYS_REQUIRES_APPROVAL` (including `publication.publish`) at every level, including L4. MCP `scriora_create_post` calls this gate and holds the Classic approval path. Classic HTTP `POST /v1/posts` still uses `workspace.requiresApproval` as its enforcement. L4 / `AUTONOMOUS` is not a publish bypass.
 **Memory Architecture (6 Tiers):**
 Working → Short-Term → Brand Knowledge → Evidence → Preferences → Operational
 **Provider Strategy:**

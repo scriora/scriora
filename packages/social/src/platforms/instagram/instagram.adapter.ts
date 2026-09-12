@@ -390,24 +390,23 @@ export class InstagramAdapter implements PlatformAdapter {
     });
   }
 
-  public async verify(externalPostId: string): Promise<boolean> {
-    try {
-      // Try graph.instagram.com first
-      try {
-        const res = await axios.get<{ id?: string }>(
-          `https://graph.instagram.com/${this.graphApiVersion}/${externalPostId}`,
-          { params: { fields: 'id' } }
-        );
-        if (res.data.id) return true;
-      } catch {
-        // Fallback to graph.facebook.com
-      }
+  public async verify(externalPostId: string, accessToken?: string): Promise<boolean> {
+    if (!accessToken?.trim()) {
+      throw new PlatformError({
+        code: 'MISSING_ACCESS_TOKEN',
+        category: 'AUTHENTICATION',
+        message:
+          'Instagram verification requires an access token; unauthenticated Graph calls are not treated as not-found',
+        retryable: true,
+      });
+    }
 
-      const resFb = await axios.get<{ id?: string }>(
-        `https://graph.facebook.com/${this.graphApiVersion}/${externalPostId}`,
-        { params: { fields: 'id' } }
+    try {
+      const res = await axios.get<{ id?: string }>(
+        `${this.getGraphBaseUrl(accessToken)}/${externalPostId}`,
+        { params: { fields: 'id', access_token: accessToken } }
       );
-      return !!resFb.data.id;
+      return !!res.data.id;
     } catch {
       return false;
     }

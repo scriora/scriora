@@ -59,5 +59,7 @@ In Cursor Settings -> Features -> MCP Servers:
 ## 🔒 Security & Sandboxing
 
 - Every tool execution strictly validates inputs against **Zod schemas**.
-- All requests are gated by workspace-level authorization headers.
+- Workspace-scoped tools (`scriora_create_post`, `scriora_list_social_accounts`) require a **workspace API key** (`SCRIORA_API_KEY`) whose binding matches `workspaceId`, plus membership of the key's user. `X-Workspace-Id` is **not** authentication and cannot authorize writes to an arbitrary workspace.
+- When `MCP_SIGNING_SECRET` is configured, those tools also require `MCP_REQUEST_SIGNATURE` (HMAC-SHA256 of `toolName:workspaceId`).
+- `scriora_create_post` treats `publication.publish` as always-approval (agent autonomy gate). It does not queue a sweepable outbox until a human approves.
 - Social tokens are never exposed through the MCP interface; only publication references are exchanged.

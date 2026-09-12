@@ -340,10 +340,23 @@ describe('Instagram Adapter & OAuth Suite', () => {
   });
 
   describe('Verification & Metrics', () => {
-    it('verifies existing media id', async () => {
+    it('verifies existing media id with an access token', async () => {
       mockedAxios.get.mockResolvedValueOnce({ data: { id: '17841400000000001' } });
-      const isValid = await adapter.verify('17841400000000001');
+      const isValid = await adapter.verify('17841400000000001', 'IGQ_token');
       expect(isValid).toBe(true);
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringContaining('17841400000000001'),
+        expect.objectContaining({
+          params: expect.objectContaining({ access_token: 'IGQ_token', fields: 'id' }),
+        })
+      );
+    });
+
+    it('refuses to call Graph without a token (does not report false not-found)', async () => {
+      await expect(adapter.verify('17841400000000001')).rejects.toMatchObject({
+        code: 'MISSING_ACCESS_TOKEN',
+      });
+      expect(mockedAxios.get).not.toHaveBeenCalled();
     });
 
     it('extracts insights metrics from Graph API including sends/shares', async () => {

@@ -345,6 +345,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.6.2)
+      scriora-agent:
+        specifier: workspace:*
+        version: link:../agent
       scriora-core:
         specifier: workspace:*
         version: link:../core
