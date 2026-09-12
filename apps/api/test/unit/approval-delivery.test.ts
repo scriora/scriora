@@ -6,9 +6,9 @@ const { sendApprovalRequest } = vi.hoisted(() => ({
 }));
 
 vi.mock('scriora-social', () => ({
-  TelegramBotService: vi.fn().mockImplementation(() => ({
-    sendApprovalRequest,
-  })),
+  TelegramBotService: class MockTelegramBotService {
+    sendApprovalRequest = sendApprovalRequest;
+  },
 }));
 
 describe('maybeSendTelegramApprovalRequests', () => {
