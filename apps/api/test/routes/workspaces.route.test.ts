@@ -78,4 +78,43 @@ describe('API Routes — Workspaces', () => {
     expect(json.success).toBe(false);
     expect(json.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('DELETE /v1/workspaces/:wsId blocks when publications still exist', async () => {
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '11111111-1111-4111-8111-111111111111';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Primary Workspace',
+        slug: 'primary-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+    vi.spyOn(prisma.publication, 'count').mockResolvedValue(3);
+    const deleteSpy = vi.spyOn(prisma.workspace, 'delete');
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/workspaces/${wsId}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(409);
+    const json = JSON.parse(res.body);
+    expect(json.error.code).toBe('WORKSPACE_HAS_PUBLICATIONS');
+    expect(deleteSpy).not.toHaveBeenCalled();
+  });
 });

@@ -133,15 +133,28 @@ export const socialAccountRoutes: FastifyPluginAsync = async (fastify) => {
     const { accountId } = paramResult.data;
     const workspaceId = request.workspace!.id;
 
-    const deleted = await prisma.socialAccount.deleteMany({
+    const account = await prisma.socialAccount.findFirst({
       where: { id: accountId, workspaceId },
+      select: { id: true },
     });
 
-    if (deleted.count === 0) {
+    if (!account) {
       return reply
         .status(404)
         .send(err('ACCOUNT_NOT_FOUND', 'NOT_FOUND', 'Social account not found', request.id));
     }
+
+    // Soft disconnect: revoke and wipe credentials. Never hard-delete while
+    // publications retain a Restrict FK to the social account.
+    await prisma.$transaction(async (tx) => {
+      await tx.socialAccount.update({
+        where: { id: accountId },
+        data: { status: 'REVOKED' },
+      });
+      await tx.secretEnvelope.deleteMany({
+        where: { socialAccountId: accountId },
+      });
+    });
 
     return reply.status(204).send();
   });
