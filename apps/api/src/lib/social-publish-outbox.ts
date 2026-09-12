@@ -1,4 +1,5 @@
 import type { Prisma } from 'scriora-core';
+import { assertSafePersistedRemoteUrls } from 'scriora-core/security';
 
 export interface SocialPublishOutboxPayload {
   workspaceId: string;
@@ -14,6 +15,10 @@ export interface SocialPublishOutboxPayload {
 export function buildSocialPublishOutboxPayload(
   input: SocialPublishOutboxPayload
 ): SocialPublishOutboxPayload {
+  assertSafePersistedRemoteUrls({
+    mediaUrls: input.mediaUrls,
+    platformOptions: input.options,
+  });
   return {
     workspaceId: input.workspaceId,
     body: input.body,

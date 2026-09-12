@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from 'scriora-core';
+import { assertSafePersistedRemoteUrls, UnsafeRemoteUrlError } from 'scriora-core/security';
 import {
   DiscordAdapter,
   FacebookAdapter,
@@ -191,6 +192,21 @@ export async function processOutboxCommand(
         ? (((payload as Record<string, unknown>).options as Record<string, unknown>).options ??
           (payload as Record<string, unknown>).options)
         : {};
+
+    try {
+      assertSafePersistedRemoteUrls({
+        mediaUrls: payload.mediaUrls ?? [],
+        platformOptions: optionsObj,
+      });
+    } catch (error: unknown) {
+      const message =
+        error instanceof UnsafeRemoteUrlError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Unsafe remote URL';
+      throw new Error(`UNSAFE_REMOTE_URL: ${message}`);
+    }
 
     // 3. Dispatch to platform
     const result = await adapter.publish({
