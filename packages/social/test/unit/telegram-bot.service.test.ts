@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import axios from 'axios';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TelegramBotService } from '../../src/platforms/telegram/telegram-bot.service.js';
 
 vi.mock('axios');
@@ -209,8 +209,14 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
         reply_markup: expect.objectContaining({
           inline_keyboard: [
             [
-              expect.objectContaining({ text: expect.stringContaining('اعتماد'), callback_data: 'approve:tok_abc' }),
-              expect.objectContaining({ text: expect.stringContaining('رفض'), callback_data: 'reject:tok_abc' }),
+              expect.objectContaining({
+                text: expect.stringContaining('اعتماد'),
+                callback_data: 'approve:tok_abc',
+              }),
+              expect.objectContaining({
+                text: expect.stringContaining('رفض'),
+                callback_data: 'reject:tok_abc',
+              }),
             ],
           ],
         }),
@@ -243,8 +249,14 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
         reply_markup: expect.objectContaining({
           inline_keyboard: [
             [
-              expect.objectContaining({ text: '🚀 موافقة ونشر الآن', callback_data: 'approve:tok_custom_123' }),
-              expect.objectContaining({ text: '🛑 إلغاء وتعديل لاحقاً', callback_data: 'reject:tok_custom_123' }),
+              expect.objectContaining({
+                text: '🚀 موافقة ونشر الآن',
+                callback_data: 'approve:tok_custom_123',
+              }),
+              expect.objectContaining({
+                text: '🛑 إلغاء وتعديل لاحقاً',
+                callback_data: 'reject:tok_custom_123',
+              }),
             ],
           ],
         }),
@@ -260,7 +272,9 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
       listAccounts: vi.fn(),
       createPost: vi.fn(),
       handleApprovalDecision: vi.fn(),
-      handleAccountConnection: vi.fn().mockResolvedValue({ success: true, workspaceName: 'Scriora Enterprise' }),
+      handleAccountConnection: vi
+        .fn()
+        .mockResolvedValue({ success: true, workspaceName: 'Scriora Enterprise' }),
     };
 
     const result = await botService.handleUpdate(
@@ -268,7 +282,12 @@ describe('TelegramBotService (C2 Admin & Interactive Governance)', () => {
         update_id: 10,
         message: {
           message_id: 10,
-          from: { id: 987654321, is_bot: false, first_name: 'Ameer', username: 'YourTelegramHandle' },
+          from: {
+            id: 987654321,
+            is_bot: false,
+            first_name: 'Ameer',
+            username: 'YourTelegramHandle',
+          },
           chat: { id: 987654321, type: 'private' },
           text: '/start connect_nonce_secure_999',
         },

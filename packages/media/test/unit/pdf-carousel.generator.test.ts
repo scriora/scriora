@@ -1,10 +1,11 @@
 // packages/media/test/unit/pdf-carousel.generator.test.ts
-import { describe, expect, it } from 'vitest';
-import sharp from 'sharp';
+
 import { PDFDocument } from 'pdf-lib';
+import sharp from 'sharp';
+import { describe, expect, it } from 'vitest';
 import {
-  PdfCarouselGenerator,
   PdfCarouselError,
+  PdfCarouselGenerator,
 } from '../../src/processors/pdf/pdf-carousel.generator.js';
 
 describe('PdfCarouselGenerator', () => {
@@ -138,8 +139,6 @@ describe('PdfCarouselGenerator', () => {
 
   it('throws descriptive error when given corrupt/invalid image buffer', async () => {
     const corruptBuffer = Buffer.from('NOT_AN_IMAGE_DATA_AT_ALL');
-    await expect(generator.generateFromImages([corruptBuffer])).rejects.toThrow(
-      PdfCarouselError
-    );
+    await expect(generator.generateFromImages([corruptBuffer])).rejects.toThrow(PdfCarouselError);
   });
 });

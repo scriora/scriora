@@ -38,13 +38,26 @@
       },
       "style": {
         "useConst": "error",
-        "noParameterAssign": "error"
+        "noParameterAssign": "error",
+        "noNonNullAssertion": "off"
       },
       "security": {
         "noGlobalEval": "error"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.spec.ts", "**/test/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "single",

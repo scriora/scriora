@@ -26,9 +26,25 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "style": {
+        "noNonNullAssertion": "off"
+      },
       "suspicious": {
+        "noConsole": "off",
         "noExplicitAny": "error"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.spec.ts", "**/test/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ]
 }

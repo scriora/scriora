@@ -437,11 +437,19 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.success).toBe(true);
 
     const variantCalls = mockTx.contentVariant.create.mock.calls;
-    expect(variantCalls[0][0].data.body).toBe('📢 Formal announcement for Channel subscribers with bullet points!');
-    expect(variantCalls[1][0].data.body).toBe('💬 Informal community prompt: What do you think about our new update?');
+    expect(variantCalls[0][0].data.body).toBe(
+      '📢 Formal announcement for Channel subscribers with bullet points!'
+    );
+    expect(variantCalls[1][0].data.body).toBe(
+      '💬 Informal community prompt: What do you think about our new update?'
+    );
 
     const outboxCalls = mockTx.outboxCommand.create.mock.calls;
-    expect(outboxCalls[0][0].data.payload.body).toBe('📢 Formal announcement for Channel subscribers with bullet points!');
-    expect(outboxCalls[1][0].data.payload.body).toBe('💬 Informal community prompt: What do you think about our new update?');
+    expect(outboxCalls[0][0].data.payload.body).toBe(
+      '📢 Formal announcement for Channel subscribers with bullet points!'
+    );
+    expect(outboxCalls[1][0].data.payload.body).toBe(
+      '💬 Informal community prompt: What do you think about our new update?'
+    );
   });
 });

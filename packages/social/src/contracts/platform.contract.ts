@@ -25,6 +25,7 @@ export const PlatformCapabilitiesSchema = z.object({
   supportsScheduling: z.boolean(),
   supportsMetrics: z.boolean(),
   supportsWebhooks: z.boolean(),
+  supportsDirectMessages: z.boolean().optional(),
   maxTextLength: z.number().int(),
 });
 
@@ -86,6 +87,38 @@ export interface TokenExchangeResult {
   rawPayload?: Record<string, unknown>;
 }
 
+export interface SendDirectMessageParams {
+  recipientId: string;
+  text: string;
+  accessToken: string;
+  mediaId?: string;
+}
+
+export interface DirectMessageResult {
+  messageId: string;
+  dmConversationId?: string;
+  createdAt?: Date;
+}
+
+export interface ListDirectMessagesParams {
+  accessToken: string;
+  maxResults?: number;
+  paginationToken?: string;
+}
+
+export interface DirectMessageEvent {
+  id: string;
+  text?: string | undefined;
+  senderId: string;
+  dmConversationId?: string | undefined;
+  createdAt: Date;
+}
+
+export interface ListDirectMessagesResult {
+  events: DirectMessageEvent[];
+  nextToken?: string | undefined;
+}
+
 export interface PlatformAdapter {
   readonly platform: SocialPlatformType;
   getCapabilities(): PlatformCapabilities;
@@ -97,4 +130,7 @@ export interface PlatformAdapter {
     refreshToken: string
   ): Promise<{ accessToken: string; refreshToken?: string; expiresIn?: number }>;
   deletePost?(externalPostId: string, accessToken: string): Promise<boolean>;
+  getMetrics?(externalPostId: string, accessToken: string): Promise<Record<string, number>>;
+  sendDirectMessage?(params: SendDirectMessageParams): Promise<DirectMessageResult>;
+  listDirectMessages?(params: ListDirectMessagesParams): Promise<ListDirectMessagesResult>;
 }

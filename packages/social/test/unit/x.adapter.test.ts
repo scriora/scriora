@@ -28,6 +28,7 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(caps.supportsThreads).toBe(true);
       expect(caps.maxTextLength).toBe(280);
       expect(caps.supportsCarousel).toBe(false);
+      expect(caps.supportsDirectMessages).toBe(true);
     });
   });
 
@@ -39,7 +40,7 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(pkce.codeVerifier.length).toBeGreaterThanOrEqual(43);
     });
 
-    it('builds canonical Twitter authorization URL with S256 and tweet scopes', () => {
+    it('builds canonical Twitter authorization URL with S256 and tweet/DM scopes', () => {
       const auth = oauth.getAuthorizationUrl({
         workspaceId: 'ws-x-123',
         redirectUri: 'http://localhost:4000/v1/connect/x/callback',
@@ -51,6 +52,8 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(auth.authorizationUrl).toContain('client_id=test_x_client_id');
       expect(auth.authorizationUrl).toContain('code_challenge_method=S256');
       expect(auth.authorizationUrl).toContain('tweet.write');
+      expect(auth.authorizationUrl).toContain('dm.read');
+      expect(auth.authorizationUrl).toContain('dm.write');
     });
 
     it('exchanges code for tokens and resolves @username via /2/users/me', async () => {
@@ -263,6 +266,37 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(calledPayload.text).toBe(arabicTweet);
     });
 
+    it('extracts links to first reply when linkInFirstReply is enabled', async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({ data: { data: { id: 'tweet_main_001' } } })
+        .mockResolvedValueOnce({ data: { data: { id: 'tweet_reply_002' } } });
+
+      const textWithLink =
+        'Check out our breakthrough SaaS operating system! https://scriora.io/demo #AI';
+
+      const result = await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: textWithLink,
+        mediaUrls: [],
+        idempotencyKey: 'idemp-x-link',
+        fingerprint: 'fp-x-link',
+        metadata: {
+          accessToken: 'valid_x_token',
+          linkInFirstReply: true,
+        },
+      });
+
+      expect(mockedAxios.post).toHaveBeenCalledTimes(2);
+      const rootCall = mockedAxios.post.mock.calls[0][1] as any;
+      expect(rootCall.text).toBe('Check out our breakthrough SaaS operating system! #AI');
+
+      const replyCall = mockedAxios.post.mock.calls[1][1] as any;
+      expect(replyCall.text).toBe('🔗 https://scriora.io/demo');
+      expect(replyCall.reply).toEqual({ in_reply_to_tweet_id: 'tweet_main_001' });
+      expect(result.status).toBe('SUCCEEDED');
+    });
+
     it('maps 429 Rate Limit from X API into retryable PlatformError', async () => {
       mockedAxios.post.mockRejectedValueOnce({
         response: {
@@ -304,6 +338,235 @@ describe('X / Twitter Full Behavioral & Unit Test Suite', () => {
       expect(res.status).toBe('SUCCEEDED');
       expect(res.externalPostId).toMatch(/^\d+$/);
       expect(res.externalPostUrl).toContain('x.com/i/status/');
+    });
+  });
+
+  describe('Advanced Features: Long Posts, ThreadItems, Polls, Communities, Media & Metrics', () => {
+    it('publishes single long post without thread splitting when longPost is true', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { id: 'tweet_long_999' } },
+      });
+
+      const longArticle = 'A'.repeat(800);
+      const res = await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: longArticle,
+        mediaUrls: [],
+        idempotencyKey: 'idemp-long-post',
+        fingerprint: 'fp-long-post',
+        metadata: {
+          accessToken: 'valid_token',
+          longPost: true,
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.externalPostId).toBe('tweet_long_999');
+      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+      const payload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(payload.text.length).toBe(800);
+    });
+
+    it('publishes explicit threadItems chaining each reply sequentially', async () => {
+      mockedAxios.post
+        .mockResolvedValueOnce({ data: { data: { id: 'thread_root_1' } } })
+        .mockResolvedValueOnce({ data: { data: { id: 'thread_item_2' } } })
+        .mockResolvedValueOnce({ data: { data: { id: 'thread_item_3' } } });
+
+      const res = await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: '1/ Root thread tweet announcement',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-explicit-thread',
+        fingerprint: 'fp-explicit-thread',
+        metadata: {
+          accessToken: 'valid_token',
+          threadItems: [
+            { content: '2/ Point two about features' },
+            { content: '3/ Final conclusion and call to action' },
+          ],
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      expect(res.externalPostId).toBe('thread_root_1');
+      expect(mockedAxios.post).toHaveBeenCalledTimes(3);
+
+      const secondCall = mockedAxios.post.mock.calls[1][1] as any;
+      expect(secondCall.reply.in_reply_to_tweet_id).toBe('thread_root_1');
+
+      const thirdCall = mockedAxios.post.mock.calls[2][1] as any;
+      expect(thirdCall.reply.in_reply_to_tweet_id).toBe('thread_item_2');
+    });
+
+    it('attaches quote_tweet_id, community_id, and native poll to root tweet', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { data: { id: 'tweet_rich_123' } },
+      });
+
+      const res = await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'x_acc_1',
+        text: 'What feature should we launch next?',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-poll-comm',
+        fingerprint: 'fp-poll-comm',
+        metadata: {
+          accessToken: 'valid_token',
+          quoteTweetId: '1899999999999999999',
+          communityId: '1234567890',
+          poll: {
+            options: ['Analytics', 'Webhooks', 'Mobile App'],
+            durationMinutes: 1440,
+          },
+        },
+      });
+
+      expect(res.status).toBe('SUCCEEDED');
+      const payload = mockedAxios.post.mock.calls[0][1] as any;
+      expect(payload.quote_tweet_id).toBe('1899999999999999999');
+      expect(payload.community_id).toBe('1234567890');
+      expect(payload.poll).toEqual({
+        options: ['Analytics', 'Webhooks', 'Mobile App'],
+        duration_minutes: 1440,
+      });
+    });
+
+    it('uploads media via uploadMedia method to v1.1 upload endpoint', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: { media_id_string: 'media_id_987654321' },
+      });
+
+      const mediaId = await adapter.uploadMedia('fake_base64_data', 'valid_token');
+      expect(mediaId).toBe('media_id_987654321');
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://upload.twitter.com/1.1/media/upload.json',
+        expect.stringContaining('media_data=fake_base64_data'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid_token',
+          }),
+        })
+      );
+    });
+
+    it('fetches tweet analytics metrics via getMetrics', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          data: {
+            public_metrics: {
+              like_count: 42,
+              retweet_count: 10,
+              reply_count: 5,
+              quote_count: 2,
+              bookmark_count: 8,
+            },
+            non_public_metrics: {
+              impression_count: 1500,
+            },
+          },
+        },
+      });
+
+      const metrics = await adapter.getMetrics('tweet_123', 'token_123');
+      expect(metrics.impressions).toBe(1500);
+      expect(metrics.likes).toBe(42);
+      expect(metrics.retweets).toBe(10);
+      expect(metrics.replies).toBe(5);
+      expect(metrics.quotes).toBe(2);
+      expect(metrics.bookmarks).toBe(8);
+    });
+
+    it('deletes tweet via deletePost', async () => {
+      mockedAxios.delete.mockResolvedValueOnce({
+        data: { data: { deleted: true } },
+      });
+
+      const deleted = await adapter.deletePost('tweet_to_delete', 'token_123');
+      expect(deleted).toBe(true);
+      expect(mockedAxios.delete).toHaveBeenCalledWith(
+        'https://api.twitter.com/2/tweets/tweet_to_delete',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer token_123',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('Direct Messages (DMs)', () => {
+    it('sends 1-on-1 direct message via POST /2/dm_conversations/with/:recipient_id/messages', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        data: {
+          data: {
+            dm_event_id: 'dm_event_987654',
+            dm_conversation_id: 'dm_conv_112233',
+          },
+        },
+      });
+
+      const result = await adapter.sendDirectMessage({
+        recipientId: 'user_target_456',
+        text: 'مرحباً! هذه رسالة خاصة تجريبية من Scriora 🚀',
+        accessToken: 'valid_dm_token',
+      });
+
+      expect(result.messageId).toBe('dm_event_987654');
+      expect(result.dmConversationId).toBe('dm_conv_112233');
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        'https://api.twitter.com/2/dm_conversations/with/user_target_456/messages',
+        {
+          message: {
+            text: 'مرحباً! هذه رسالة خاصة تجريبية من Scriora 🚀',
+          },
+        },
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid_dm_token',
+          }),
+        })
+      );
+    });
+
+    it('lists direct message events via GET /2/dm_events', async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          data: [
+            {
+              id: 'dm_1',
+              text: 'أهلاً بك، كيف يمكنني الاشتراك؟',
+              sender_id: 'user_sender_789',
+              dm_conversation_id: 'dm_conv_112233',
+              created_at: '2026-09-12T06:00:00.000Z',
+            },
+          ],
+          meta: {
+            next_token: 'page_token_next',
+          },
+        },
+      });
+
+      const result = await adapter.listDirectMessages({
+        accessToken: 'valid_dm_token',
+        maxResults: 10,
+      });
+
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0]?.id).toBe('dm_1');
+      expect(result.events[0]?.text).toBe('أهلاً بك، كيف يمكنني الاشتراك؟');
+      expect(result.events[0]?.senderId).toBe('user_sender_789');
+      expect(result.nextToken).toBe('page_token_next');
+      expect(mockedAxios.get).toHaveBeenCalledWith(
+        expect.stringContaining('https://api.twitter.com/2/dm_events'),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid_dm_token',
+          }),
+        })
+      );
     });
   });
 

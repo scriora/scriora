@@ -47,7 +47,9 @@ export class XOAuth {
       .createHash('sha256')
       .update(params.codeVerifier)
       .digest('base64url');
-    const scope = encodeURIComponent('tweet.read tweet.write users.read offline.access');
+    const scope = encodeURIComponent(
+      'tweet.read tweet.write users.read dm.read dm.write offline.access'
+    );
 
     const authorizationUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(
       clientId

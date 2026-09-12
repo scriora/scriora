@@ -58,4 +58,73 @@ describe('API Routes — Social Accounts', () => {
     expect(json.success).toBe(false);
     expect(json.error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('POST /v1/social-accounts/:accountId/messages returns 401 when unauthenticated', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/social-accounts/11111111-1111-4111-8111-111111111111/messages',
+      payload: {
+        recipientId: '12345',
+        text: 'Hello via DM',
+      },
+    });
+
+    expect(res.statusCode).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+  });
+
+  it('POST /v1/social-accounts/:accountId/messages returns 400 when body is invalid', async () => {
+    const token = app.jwt.sign({ sub: 'user-123' });
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: 'Primary Workspace',
+        slug: 'primary-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/social-accounts/11111111-1111-4111-8111-111111111111/messages',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': '11111111-1111-4111-8111-111111111111',
+      },
+      payload: {
+        // missing text & recipientId
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('GET /v1/social-accounts/:accountId/messages returns 401 when unauthenticated', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/social-accounts/11111111-1111-4111-8111-111111111111/messages',
+    });
+
+    expect(res.statusCode).toBe(401);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(false);
+  });
 });
+

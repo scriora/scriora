@@ -62,11 +62,46 @@ export const LinkedInOptionsSchema = z.object({
     .optional(),
 });
 
+export const XPollSchema = z.object({
+  /** 2 to 4 poll options, each up to 25 characters */
+  options: z.array(z.string().min(1).max(25)).min(2).max(4),
+  /** Poll duration in minutes: between 5 minutes and 10,080 minutes (7 days) */
+  durationMinutes: z.number().int().min(5).max(10080).default(1440),
+});
+
+export const XThreadItemSchema = z.object({
+  /** Text content of this thread item (max 280 chars) */
+  content: z.string().min(1).max(280),
+  /** Optional media URLs to attach to this thread tweet (up to 4 images or 1 video) */
+  mediaUrls: z.array(z.string().url()).max(4).optional(),
+  /** Optional alt text for media items */
+  altText: z.string().max(1000).optional(),
+});
+
 export const XOptionsSchema = z.object({
   /** Split body into a thread if it exceeds 280 chars */
   threadMode: z.boolean().default(false),
-  /** Reply to an existing X post */
+  /** Opt in to long posts (up to 25,000 chars) for X Premium / Premium+ accounts without thread splitting */
+  longPost: z.boolean().optional(),
+  /** Reply to an existing X post / tweet ID */
   replyToId: z.string().optional(),
+  replyToTweetId: z.string().optional(),
+  /** Quote an existing tweet ID */
+  quoteTweetId: z.string().optional(),
+  /** Control who can reply: following, mentionedUsers, subscribers, verified, or everyone */
+  replySettings: z
+    .enum(['following', 'mentionedUsers', 'subscribers', 'verified', 'everyone'])
+    .optional(),
+  /** Twitter Community ID to publish this post into */
+  communityId: z.string().optional(),
+  /** When posting to a Community, also share the post with your followers */
+  shareWithFollowers: z.boolean().optional(),
+  /** Native poll configuration (cannot be combined with media or threadItems on the same tweet) */
+  poll: XPollSchema.optional(),
+  /** Explicit chained thread items */
+  threadItems: z.array(XThreadItemSchema).max(25).optional(),
+  /** Automatically move links from the main tweet to the first reply (bypasses the 2026 X link penalty) */
+  linkInFirstReply: z.boolean().optional(),
   /** Add alt text for accessibility (required for WCAG compliance) */
   altText: z.string().max(1000).optional(),
 });

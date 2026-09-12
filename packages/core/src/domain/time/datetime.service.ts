@@ -220,21 +220,23 @@ export class DateTimeService {
   }
 
   /**
-   * Generates optimal smart schedule slots based on industry benchmark data (Buffer 4.8M post analysis):
-   * - Peak window: 3:00 PM – 8:00 PM on weekdays.
-   * - Peak slots: Wednesday 4 PM (100), Friday 3 PM (96), Friday 4 PM (94), Thursday 5 PM (92), Wednesday 3 PM (90).
+   * Generates optimal smart schedule slots based on industry benchmark data (Buffer 8.7M post analysis for X, 4.8M for LinkedIn):
+   * - X Peak window: Weekday mornings 9:00 AM – 11:00 AM (Tuesday 9am #1, Wednesday 10am #2, Wednesday 9am #3).
+   * - LinkedIn Peak window: 3:00 PM – 8:00 PM on weekdays.
    * Extensible to individual account case-study models when account analytics history exists.
    */
   public getSmartScheduleSlots(options?: {
     timezone?: string;
     startDate?: Date;
     daysAhead?: number;
+    platform?: 'LINKEDIN' | 'X' | 'GENERAL';
   }): SmartScheduleSlot[] {
     const timezone = options?.timezone || this.defaultTimezone;
     const start = options?.startDate || new Date();
     const daysAhead = Math.min(options?.daysAhead || 7, 14);
+    const platform = options?.platform || 'GENERAL';
 
-    const goldenSlotTemplates = [
+    const linkedInSlotTemplates = [
       {
         dayOfWeek: 3,
         hour: 16,
@@ -292,6 +294,61 @@ export class DateTimeService {
         reason: 'الاثنين 5 مساءً: أفضل فترات الاثنين بعد انقضاء اجتماعات الصباح',
       },
     ];
+
+    const xSlotTemplates = [
+      {
+        dayOfWeek: 2, // Tuesday
+        hour: 9,
+        minute: 0,
+        score: 100,
+        reason:
+          'الثلاثاء 9:00 ص: أعلى أوقات التفاعل عالمياً على منصة X (دراسة Buffer لـ 8.7M منشور)',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 10,
+        minute: 0,
+        score: 98,
+        reason: 'الأربعاء 10:00 ص: ثاني أعلى توقيت للتفاعل ومعدل الانتشار الأسبوعي على X',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 9,
+        minute: 0,
+        score: 95,
+        reason: 'الأربعاء 9:00 ص: ذروة التفاعل الصباحي لمنتصف الأسبوع',
+      },
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 9,
+        minute: 0,
+        score: 92,
+        reason: 'الخميس 9:00 ص: تفاعل ومشاركات قوية قبل عطلة نهاية الأسبوع',
+      },
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 10,
+        minute: 0,
+        score: 90,
+        reason: 'الخميس 10:00 ص: استمرار زخم النقاشات الصباحية على X',
+      },
+      {
+        dayOfWeek: 1, // Monday
+        hour: 9,
+        minute: 0,
+        score: 85,
+        reason: 'الاثنين 9:00 ص: عودة المتابعين للتصفح مع بداية الأسبوع',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 9,
+        minute: 0,
+        score: 80,
+        reason: 'الجمعة 9:00 ص: آخر نافذة تفاعل نشطة قبل هبوط عطلة نهاية الأسبوع',
+      },
+    ];
+
+    const goldenSlotTemplates = platform === 'X' ? xSlotTemplates : linkedInSlotTemplates;
 
     const results: SmartScheduleSlot[] = [];
 

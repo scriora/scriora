@@ -305,7 +305,9 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       expect(shareContent.shareMediaCategory).toBe('ARTICLE');
       expect(shareContent.media[0].originalUrl).toBe('https://scriora.io/blog/enterprise-launch');
       expect(shareContent.media[0].title.text).toBe('Scriora 2.0: Omnichannel Architecture');
-      expect(shareContent.media[0].description.text).toBe('Learn how Scriora revolutionizes social scheduling.');
+      expect(shareContent.media[0].description.text).toBe(
+        'Learn how Scriora revolutionizes social scheduling.'
+      );
     });
 
     it('transforms company page mentions into native LinkedIn UGC attributes', async () => {
@@ -332,7 +334,8 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       });
 
       const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
-      const commentary = calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareCommentary;
+      const commentary =
+        calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareCommentary;
       expect(commentary.text).toBe(text);
       expect(commentary.attributes).toHaveLength(2);
       expect(commentary.attributes[0]).toEqual({

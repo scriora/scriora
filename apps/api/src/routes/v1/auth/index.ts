@@ -282,7 +282,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ? await verifyPassword(password, user.passwordHash)
       : false;
 
-    if (!user || !user.passwordHash || !isPasswordValid) {
+    if (!user?.passwordHash || !isPasswordValid) {
       return reply
         .status(401)
         .send(

@@ -254,7 +254,7 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
     const platformUpper = platform.toUpperCase() as SocialPlatform;
     const adapter = platformRegistry.get(platformUpper as unknown as SocialPlatformType);
 
-    if (!adapter || !adapter.exchangeCodeForTokens) {
+    if (!adapter?.exchangeCodeForTokens) {
       return reply
         .status(400)
         .send(

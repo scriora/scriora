@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { DateTimeService, defaultDateTimeService } from '../../src/domain/time/datetime.service.js';
 
 describe('DateTimeService', () => {
@@ -90,7 +90,7 @@ describe('DateTimeService', () => {
       // Cairo is UTC+3 in September (EEST)
       const localStr = '2026-09-12T16:00:00';
       const utc = service.toUtc(localStr, 'Africa/Cairo');
-      
+
       expect(utc).toBeInstanceOf(Date);
       expect(utc.getUTCFullYear()).toBe(2026);
       expect(utc.getUTCMonth()).toBe(8); // September (0-indexed)
@@ -116,6 +116,23 @@ describe('DateTimeService', () => {
       expect(topSlot.formattedEnglish).toBeDefined();
       expect(topSlot.recommendationReason).toBeDefined();
       expect(topSlot.datetimeUtc).toMatch(/T.*Z/);
+    });
+
+    it('generates X-specific golden slots based on 2026 8.7M post analysis (Tuesday 9am #1, Wednesday 10am #2)', () => {
+      const baseDate = new Date('2026-09-12T00:00:00Z');
+      const xSlots = service.getSmartScheduleSlots({
+        timezone: 'Africa/Cairo',
+        startDate: baseDate,
+        daysAhead: 7,
+        platform: 'X',
+      });
+
+      expect(xSlots.length).toBeGreaterThan(0);
+      const topSlot = xSlots[0];
+      expect(topSlot.score).toBe(100);
+      expect(topSlot.localTime).toBe('09:00');
+      expect(topSlot.recommendationReason).toContain('الثلاثاء 9:00 ص');
+      expect(topSlot.recommendationReason).toContain('8.7M');
     });
   });
 });

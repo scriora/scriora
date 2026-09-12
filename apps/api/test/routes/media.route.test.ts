@@ -98,7 +98,11 @@ describe('API Routes — Media & Carousel Generator', () => {
           {
             title: 'Welcome to Scriora Carousel',
             subtitle: 'Automated Multi-Platform Publishing',
-            bulletPoints: ['High Resolution 1080x1080', 'Vector Quality', 'Instant LinkedIn Posting'],
+            bulletPoints: [
+              'High Resolution 1080x1080',
+              'Vector Quality',
+              'Instant LinkedIn Posting',
+            ],
           },
           {
             title: 'Engagement Booster',
