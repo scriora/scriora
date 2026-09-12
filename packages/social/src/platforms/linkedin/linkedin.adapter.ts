@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import axios from 'axios';
 import type {
   OAuthCallbackParams,
@@ -124,19 +125,51 @@ export class LinkedInAdapter implements PlatformAdapter {
       const mentionAttributes: Array<{
         start: number;
         length: number;
-        value: { 'com.linkedin.common.CompanyURN': string };
+        value: Record<string, unknown>;
       }> = [];
 
       for (const mention of mentionsList) {
         if (typeof mention?.text === 'string' && typeof mention?.urn === 'string') {
           const idx = postText.indexOf(mention.text);
           if (idx !== -1) {
+            let valuePayload: Record<string, unknown>;
+            if (
+              mention.urn.startsWith('urn:li:organization:') ||
+              mention.urn.startsWith('urn:li:company:')
+            ) {
+              const companyId = mention.urn.replace(/^urn:li:(organization|company):/, '');
+              valuePayload = {
+                'com.linkedin.common.CompanyAttributedEntity': {
+                  company: `urn:li:company:${companyId}`,
+                },
+              };
+            } else if (mention.urn.startsWith('urn:li:organizationalPage:')) {
+              valuePayload = {
+                'com.linkedin.common.OrganizationalPageAttributedEntity': {
+                  organizationalPage: mention.urn,
+                },
+              };
+            } else if (
+              mention.urn.startsWith('urn:li:person:') ||
+              mention.urn.startsWith('urn:li:member:')
+            ) {
+              valuePayload = {
+                'com.linkedin.common.MemberAttributedEntity': {
+                  member: mention.urn,
+                },
+              };
+            } else {
+              valuePayload = {
+                'com.linkedin.common.CompanyAttributedEntity': {
+                  company: mention.urn,
+                },
+              };
+            }
+
             mentionAttributes.push({
               start: idx,
               length: mention.text.length,
-              value: {
-                'com.linkedin.common.CompanyURN': mention.urn,
-              },
+              value: valuePayload,
             });
           }
         }
@@ -266,11 +299,28 @@ export class LinkedInAdapter implements PlatformAdapter {
     } else if (imageUrl.startsWith('urn:li:digitalmediaAsset:')) {
       return imageUrl;
     } else {
-      throw new PlatformError({
-        message: `Unsupported image URL or format: ${imageUrl}`,
-        code: 'INVALID_MEDIA_URL',
-        retryable: false,
-      });
+      try {
+        const fileBuffer = await fs.readFile(imageUrl);
+        const ext = imageUrl.split('.').pop()?.toLowerCase();
+        const contentType =
+          ext === 'jpg' || ext === 'jpeg'
+            ? 'image/jpeg'
+            : ext === 'webp'
+              ? 'image/webp'
+              : 'image/png';
+        await axios.post(uploadUrl, fileBuffer, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': contentType,
+          },
+        });
+      } catch (fsErr) {
+        throw new PlatformError({
+          message: `Unsupported image URL or failed to read local file: ${imageUrl} (${fsErr instanceof Error ? fsErr.message : String(fsErr)})`,
+          code: 'INVALID_MEDIA_URL',
+          retryable: false,
+        });
+      }
     }
 
     return assetUrn;

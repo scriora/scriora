@@ -338,12 +338,20 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       expect(commentary.attributes[0]).toEqual({
         start: text.indexOf('@Microsoft'),
         length: '@Microsoft'.length,
-        value: { 'com.linkedin.common.CompanyURN': 'urn:li:organization:1035' },
+        value: {
+          'com.linkedin.common.CompanyAttributedEntity': {
+            company: 'urn:li:company:1035',
+          },
+        },
       });
       expect(commentary.attributes[1]).toEqual({
         start: text.indexOf('@Google'),
         length: '@Google'.length,
-        value: { 'com.linkedin.common.CompanyURN': 'urn:li:organization:1441' },
+        value: {
+          'com.linkedin.common.CompanyAttributedEntity': {
+            company: 'urn:li:company:1441',
+          },
+        },
       });
     });
 
