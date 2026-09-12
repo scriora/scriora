@@ -5,7 +5,14 @@
 // Reference: scriora-docs/architecture/SCRIORA_REPOSITORY_SPECIFICATIONS.md
 
 import { serve } from 'inngest/node';
-import { LinkedInAdapter, platformRegistry, TelegramAdapter, XAdapter } from 'scriora-social';
+import {
+  InstagramAdapter,
+  LinkedInAdapter,
+  platformRegistry,
+  TelegramAdapter,
+  ThreadsAdapter,
+  XAdapter,
+} from 'scriora-social';
 import { inngest } from './inngest.js';
 import { outboxSweepJob } from './jobs/outbox-sweep.job.js';
 import { publishJob } from './jobs/publish.job.js';
@@ -25,6 +32,16 @@ if (!platformRegistry.has('X')) {
 if (!platformRegistry.has('TELEGRAM')) {
   try {
     platformRegistry.register(new TelegramAdapter());
+  } catch {}
+}
+if (!platformRegistry.has('INSTAGRAM')) {
+  try {
+    platformRegistry.register(new InstagramAdapter());
+  } catch {}
+}
+if (!platformRegistry.has('THREADS')) {
+  try {
+    platformRegistry.register(new ThreadsAdapter());
   } catch {}
 }
 
