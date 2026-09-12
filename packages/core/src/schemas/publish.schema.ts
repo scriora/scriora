@@ -34,12 +34,32 @@ export const MediaRefSchema = z.object({
 // Each platform can receive native options beyond the universal body.
 
 export const LinkedInOptionsSchema = z.object({
-  /** Post as a LinkedIn Article instead of a feed post */
+  /** Post as a LinkedIn Article instead of a standard feed post */
   postAsArticle: z.boolean().optional(),
   /** Attach a document carousel (requires mediaAssetId pointing to PDF) */
   documentTitle: z.string().max(255).optional(),
   /** Visibility: public, connections only */
   visibility: z.enum(['PUBLIC', 'CONNECTIONS']).default('PUBLIC'),
+  /** External URL for rich link / article share preview card */
+  articleUrl: z.string().url().optional(),
+  /** Custom title for article preview card (up to 400 chars) */
+  articleTitle: z.string().max(400).optional(),
+  /** Custom description for article preview card (up to 400 chars) */
+  articleDescription: z.string().max(400).optional(),
+  /** Tag company/organization pages in the post text with clickable LinkedIn mentions */
+  mentions: z
+    .array(
+      z.object({
+        /** Exact substring within post text to convert to mention (e.g. '@Google') */
+        text: z.string().min(1),
+        /** Organization URN to link (e.g. 'urn:li:organization:1441') */
+        urn: z.string().regex(/^urn:li:organization:\d+$/, {
+          message: "LinkedIn mention URN must match format 'urn:li:organization:<digits>'",
+        }),
+      })
+    )
+    .max(30)
+    .optional(),
 });
 
 export const XOptionsSchema = z.object({

@@ -83,14 +83,21 @@ export class LinkedInAdapter implements PlatformAdapter {
       } else if (postType === 'ARTICLE' || request.metadata?.articleUrl) {
         shareMediaCategory = 'ARTICLE';
         const articleUrl = (request.metadata?.articleUrl as string) || request.mediaUrls[0];
+        const titleText =
+          (request.metadata?.articleTitle as string) ||
+          (request.metadata?.title as string) ||
+          undefined;
+        const descText =
+          (request.metadata?.articleDescription as string) ||
+          (request.metadata?.description as string) ||
+          undefined;
+
         mediaItems = [
           {
             status: 'READY',
             originalUrl: articleUrl,
-            ...(request.metadata?.title ? { title: { text: String(request.metadata.title) } } : {}),
-            ...(request.metadata?.description
-              ? { description: { text: String(request.metadata.description) } }
-              : {}),
+            ...(titleText ? { title: { text: titleText } } : {}),
+            ...(descText ? { description: { text: descText } } : {}),
           },
         ];
       } else if (request.mediaUrls.length > 0) {
@@ -108,13 +115,41 @@ export class LinkedInAdapter implements PlatformAdapter {
         mediaItems = uploadedAssets;
       }
 
+      // Process LinkedIn company page mentions into native UGC attributes
+      const postText = request.text || '';
+      const mentionsList = Array.isArray(request.metadata?.mentions)
+        ? (request.metadata.mentions as Array<{ text: string; urn: string }>)
+        : [];
+
+      const mentionAttributes: Array<{
+        start: number;
+        length: number;
+        value: { 'com.linkedin.common.CompanyURN': string };
+      }> = [];
+
+      for (const mention of mentionsList) {
+        if (typeof mention?.text === 'string' && typeof mention?.urn === 'string') {
+          const idx = postText.indexOf(mention.text);
+          if (idx !== -1) {
+            mentionAttributes.push({
+              start: idx,
+              length: mention.text.length,
+              value: {
+                'com.linkedin.common.CompanyURN': mention.urn,
+              },
+            });
+          }
+        }
+      }
+
       const payload = {
         author: authorUrn,
         lifecycleState: 'PUBLISHED',
         specificContent: {
           'com.linkedin.ugc.ShareContent': {
             shareCommentary: {
-              text: request.text || '',
+              text: postText,
+              ...(mentionAttributes.length > 0 ? { attributes: mentionAttributes } : {}),
             },
             shareMediaCategory,
             ...(mediaItems.length > 0 ? { media: mediaItems } : {}),

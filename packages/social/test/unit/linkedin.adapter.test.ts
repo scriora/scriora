@@ -279,6 +279,74 @@ describe('LinkedIn Full Behavioral & Unit Test Suite', () => {
       ).toBe(arabicPost);
     });
 
+    it('publishes rich article card with articleUrl, articleTitle, and articleDescription', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'urn:li:share:article_999' },
+      });
+
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'person_123',
+        text: 'Excited to unveil our latest release! 🚀',
+        mediaUrls: [],
+        idempotencyKey: 'idemp-art',
+        fingerprint: 'fp-art',
+        metadata: {
+          accessToken: 'valid_access_token',
+          articleUrl: 'https://scriora.io/blog/enterprise-launch',
+          articleTitle: 'Scriora 2.0: Omnichannel Architecture',
+          articleDescription: 'Learn how Scriora revolutionizes social scheduling.',
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      const shareContent = calledPayload.specificContent['com.linkedin.ugc.ShareContent'];
+      expect(shareContent.shareMediaCategory).toBe('ARTICLE');
+      expect(shareContent.media[0].originalUrl).toBe('https://scriora.io/blog/enterprise-launch');
+      expect(shareContent.media[0].title.text).toBe('Scriora 2.0: Omnichannel Architecture');
+      expect(shareContent.media[0].description.text).toBe('Learn how Scriora revolutionizes social scheduling.');
+    });
+
+    it('transforms company page mentions into native LinkedIn UGC attributes', async () => {
+      mockedAxios.post.mockResolvedValueOnce({
+        status: 201,
+        data: { id: 'urn:li:share:mention_555' },
+      });
+
+      const text = 'Thrilled to partner with @Microsoft and @Google on this milestone!';
+      await adapter.publish({
+        workspaceId: 'ws-123',
+        accountId: 'person_123',
+        text,
+        mediaUrls: [],
+        idempotencyKey: 'idemp-men',
+        fingerprint: 'fp-men',
+        metadata: {
+          accessToken: 'valid_access_token',
+          mentions: [
+            { text: '@Microsoft', urn: 'urn:li:organization:1035' },
+            { text: '@Google', urn: 'urn:li:organization:1441' },
+          ],
+        },
+      });
+
+      const calledPayload = mockedAxios.post.mock.calls[0][1] as any;
+      const commentary = calledPayload.specificContent['com.linkedin.ugc.ShareContent'].shareCommentary;
+      expect(commentary.text).toBe(text);
+      expect(commentary.attributes).toHaveLength(2);
+      expect(commentary.attributes[0]).toEqual({
+        start: text.indexOf('@Microsoft'),
+        length: '@Microsoft'.length,
+        value: { 'com.linkedin.common.CompanyURN': 'urn:li:organization:1035' },
+      });
+      expect(commentary.attributes[1]).toEqual({
+        start: text.indexOf('@Google'),
+        length: '@Google'.length,
+        value: { 'com.linkedin.common.CompanyURN': 'urn:li:organization:1441' },
+      });
+    });
+
     it('handles 429 Rate Limit error gracefully with retryAfterMs', async () => {
       const axiosError = new Error('Request failed with status code 429') as any;
       axiosError.isAxiosError = true;
