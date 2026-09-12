@@ -108,12 +108,52 @@ export const XOptionsSchema = z.object({
 
 export const InstagramOptionsSchema = z.object({
   postType: z.enum(['FEED', 'REEL', 'STORY', 'CAROUSEL']).default('FEED'),
+  /** Share Reel to feed grid (default true, set false to publish to Reels tab only) */
+  shareToFeed: z.boolean().optional(),
+  /** Custom public image URL for Reel/Video cover thumbnail */
+  coverUrl: z.string().url().optional(),
+  /** Video frame timestamp in milliseconds to extract as cover */
+  thumbOffset: z.number().int().min(0).optional(),
+  /** Audio title label shown on the Reel (max 100 chars) */
+  audioName: z.string().min(1).max(100).optional(),
+  /** Invite up to 3 Instagram usernames as collaborators */
+  collaborators: z.array(z.string().min(1)).max(3).optional(),
+  /** Trial Reel configuration shown to non-followers first */
+  trialParams: z
+    .object({
+      graduationStrategy: z.enum(['MANUAL', 'SS_PERFORMANCE']),
+    })
+    .optional(),
   /** Collab post — co-author handle */
   collabHandle: z.string().optional(),
   /** Hide like count */
   hideLikeCount: z.boolean().default(false),
   /** Disable comments */
   disableComments: z.boolean().default(false),
+});
+
+export const ThreadsThreadItemSchema = z.object({
+  /** Text content of this chained reply (max 500 characters) */
+  content: z.string().min(1).max(500),
+  /** Optional media URLs attached to this reply item (up to 10 images or videos) */
+  mediaUrls: z.array(z.string().url()).max(10).optional(),
+  /** Optional topic tag for community discovery */
+  topicTag: z.string().max(50).optional(),
+});
+
+export const ThreadsOptionsSchema = z.object({
+  /** Topic tag to categorize post into community hubs (e.g. 'technology', 'design') */
+  topicTag: z.string().max(50).optional(),
+  /** Parent thread or reply ID to continue an existing conversation */
+  replyToId: z.string().optional(),
+  /** Optional external link preview card */
+  linkAttachment: z.string().url().optional(),
+  /** Who can reply to this thread: 'everyone' (default), 'accounts_you_follow', or 'mentioned_only' */
+  replyControl: z.enum(['everyone', 'accounts_you_follow', 'mentioned_only']).optional(),
+  /** Alt text for accessibility per image, in the same order as media attachments */
+  altText: z.array(z.string().max(1000)).max(10).optional(),
+  /** Chained thread items (published sequentially as connected replies like Postiz thread composer) */
+  threadItems: z.array(ThreadsThreadItemSchema).max(25).optional(),
 });
 
 export const TikTokOptionsSchema = z.object({
@@ -155,7 +195,7 @@ export const PlatformOptionsSchema = z.discriminatedUnion('platform', [
   z.object({ platform: z.literal('INSTAGRAM'), options: InstagramOptionsSchema }),
   z.object({ platform: z.literal('TIKTOK'), options: TikTokOptionsSchema }),
   z.object({ platform: z.literal('YOUTUBE'), options: z.object({}).passthrough() }),
-  z.object({ platform: z.literal('THREADS'), options: z.object({}).passthrough() }),
+  z.object({ platform: z.literal('THREADS'), options: ThreadsOptionsSchema }),
   z.object({ platform: z.literal('FACEBOOK'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('BLUESKY'), options: z.object({}).passthrough() }),
   z.object({ platform: z.literal('PINTEREST'), options: z.object({}).passthrough() }),
@@ -225,3 +265,6 @@ export type PublishPayload = z.infer<typeof PublishPayloadSchema>;
 export type SchedulePayload = z.infer<typeof SchedulePayloadSchema>;
 export type PublishTarget = z.infer<typeof PublishTargetSchema>;
 export type MediaRef = z.infer<typeof MediaRefSchema>;
+export type InstagramOptions = z.infer<typeof InstagramOptionsSchema>;
+export type ThreadsOptions = z.infer<typeof ThreadsOptionsSchema>;
+export type ThreadsThreadItem = z.infer<typeof ThreadsThreadItemSchema>;

@@ -96,15 +96,24 @@ export class AdaptiveScheduleService {
         replies: metricMap.replies ?? metricMap.reply_count ?? metricMap.comments,
         reposts:
           metricMap.reposts ?? metricMap.repost_count ?? metricMap.retweets ?? metricMap.shares,
+        shares: metricMap.shares,
         quotes: metricMap.quotes ?? metricMap.quote_count,
-        bookmarks: metricMap.bookmarks ?? metricMap.bookmark_count,
+        bookmarks: metricMap.bookmarks ?? metricMap.bookmark_count ?? metricMap.saved,
         clicks: metricMap.clicks ?? metricMap.profile_clicks ?? metricMap.link_clicks,
         engagementRate: metricMap.engagement_rate,
       };
     });
 
     const platform =
-      account.platform === 'X' ? 'X' : account.platform === 'LINKEDIN' ? 'LINKEDIN' : 'GENERAL';
+      account.platform === 'X'
+        ? 'X'
+        : account.platform === 'LINKEDIN'
+          ? 'LINKEDIN'
+          : account.platform === 'INSTAGRAM'
+            ? 'INSTAGRAM'
+            : account.platform === 'THREADS'
+              ? 'THREADS'
+              : 'GENERAL';
 
     const slots = this.dateTime.getSmartScheduleSlots({
       timezone,

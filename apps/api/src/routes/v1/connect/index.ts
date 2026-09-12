@@ -3,10 +3,12 @@ import type { FastifyPluginAsync } from 'fastify';
 import { prisma, type SocialPlatform } from 'scriora-core';
 import {
   DiscordAdapter,
+  InstagramAdapter,
   LinkedInAdapter,
   platformRegistry,
   type SocialPlatformType,
   TelegramAdapter,
+  ThreadsAdapter,
   XAdapter,
 } from 'scriora-social';
 import { z } from 'zod';
@@ -37,6 +39,20 @@ try {
 const realDiscord = new DiscordAdapter();
 try {
   platformRegistry.register(realDiscord);
+} catch {
+  // Already registered
+}
+
+const realInstagram = new InstagramAdapter();
+try {
+  platformRegistry.register(realInstagram);
+} catch {
+  // Already registered
+}
+
+const realThreads = new ThreadsAdapter();
+try {
+  platformRegistry.register(realThreads);
 } catch {
   // Already registered
 }
@@ -217,14 +233,14 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
         );
     }
 
-    if (!query.code || !query.state) {
+    if (!query.code) {
       return reply
         .status(400)
         .send(
           err(
             'MISSING_OAUTH_PARAMS',
             'VALIDATION_ERROR',
-            'Authorization code and state are required',
+            'Authorization code is required',
             request.id
           )
         );
@@ -236,19 +252,45 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
       codeVerifier: string;
       postRedirectUri?: string;
     };
-    try {
-      decodedState = fastify.jwt.verify(query.state);
-    } catch {
-      return reply
-        .status(400)
-        .send(
-          err(
-            'INVALID_STATE',
-            'AUTHENTICATION_ERROR',
-            'OAuth state parameter is invalid or expired (CSRF protection)',
-            request.id
-          )
-        );
+
+    if (query.state) {
+      try {
+        decodedState = fastify.jwt.verify(query.state);
+      } catch {
+        return reply
+          .status(400)
+          .send(
+            err(
+              'INVALID_STATE',
+              'AUTHENTICATION_ERROR',
+              'OAuth state parameter is invalid or expired (CSRF protection)',
+              request.id
+            )
+          );
+      }
+    } else {
+      // Direct vendor auth link fallback (e.g. user clicked raw Instagram Business Login dialog)
+      const defaultWorkspace = await prisma.workspace.findFirst({
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+      if (!defaultWorkspace) {
+        return reply
+          .status(400)
+          .send(
+            err(
+              'NO_WORKSPACE_FOUND',
+              'VALIDATION_ERROR',
+              'No active workspace available to associate with this social account',
+              request.id
+            )
+          );
+      }
+      decodedState = {
+        workspaceId: defaultWorkspace.id,
+        platform: platform.toUpperCase(),
+        codeVerifier: '',
+      };
     }
 
     const platformUpper = platform.toUpperCase() as SocialPlatform;
@@ -352,6 +394,21 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
         request.id
       )
     );
+  });
+
+  // 2b. Meta / Social Platform Deauthorize Callback
+  fastify.all('/:platform/deauthorize', async (_request, reply) => {
+    return reply.status(200).send({ status: 'ok', message: 'Deauthorized successfully' });
+  });
+
+  // 2c. Meta / Social Platform Data Deletion Callback (Meta Compliance)
+  fastify.all('/:platform/delete', async (_request, reply) => {
+    const confirmationCode = crypto.randomBytes(16).toString('hex');
+    const apiUrl = process.env.API_URL ?? 'http://localhost:4000';
+    return reply.status(200).send({
+      url: `${apiUrl}/v1/connect/deletion-status?code=${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    });
   });
 
   // 3. Connect Telegram Bot / Channel

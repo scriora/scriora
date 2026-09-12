@@ -2,9 +2,11 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import {
   adaptiveScheduleService,
+  crossPostOptimizer,
   defaultDateTimeService,
   PaginationQuerySchema,
   PublishPayloadSchema,
+  SocialPlatformSchema,
   prisma,
 } from 'scriora-core';
 import { z } from 'zod';
@@ -18,7 +20,10 @@ const PostParamsSchema = z.object({
 
 const PostSmartScheduleQuerySchema = z.object({
   socialAccountId: z.string().uuid('Invalid socialAccountId: must be a valid UUID').optional(),
-  platform: z.enum(['LINKEDIN', 'X', 'GENERAL']).default('GENERAL').optional(),
+  platform: z
+    .enum(['LINKEDIN', 'X', 'INSTAGRAM', 'THREADS', 'GENERAL'])
+    .default('GENERAL')
+    .optional(),
   daysAhead: z.coerce.number().int().min(1).max(30).default(7).optional(),
   limit: z.coerce.number().int().min(1).max(50).default(10).optional(),
   timezone: z.string().min(1).max(100).optional(),
@@ -496,4 +501,40 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         ok({ message: 'Publication cancelled successfully', publicationId: pub.id }, request.id)
       );
   });
+
+  // 6. POST /v1/posts/optimize-cross-post (Cross-platform intelligence & adaptation heuristics)
+  fastify.post('/optimize-cross-post', async (request, reply) => {
+    const OptimizeSchema = z.object({
+      body: z.string().min(1, 'Post body cannot be empty'),
+      mediaUrls: z.array(z.string().url()).optional(),
+      targetPlatforms: z
+        .array(SocialPlatformSchema)
+        .min(1, 'At least one target platform is required'),
+    });
+
+    const parseResult = OptimizeSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send(
+        err(
+          'VALIDATION_ERROR',
+          'VALIDATION_ERROR',
+          'Invalid optimize request payload',
+          request.id,
+          false,
+          parseResult.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message }))
+        )
+      );
+    }
+
+    const { body, mediaUrls, targetPlatforms } = parseResult.data;
+    const analysis = crossPostOptimizer.optimize({
+      body,
+      mediaUrls,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      targetPlatforms: targetPlatforms as any,
+    });
+
+    return reply.status(200).send(ok(analysis, request.id));
+  });
 };
+

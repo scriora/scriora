@@ -136,6 +136,23 @@ describe('DateTimeService', () => {
       expect(topSlot.source).toBe('BENCHMARK');
     });
 
+    it('generates Instagram-specific golden slots based on 2026 9.6M post analysis (Wednesday 12pm #1)', () => {
+      const igSlots = service.getSmartScheduleSlots({
+        timezone: 'Africa/Cairo',
+        startDate: new Date('2026-09-12T00:00:00Z'),
+        daysAhead: 7,
+        platform: 'INSTAGRAM',
+      });
+
+      expect(igSlots.length).toBeGreaterThan(0);
+      const topSlot = igSlots[0];
+      expect(topSlot.score).toBe(100);
+      expect(topSlot.localTime).toBe('12:00');
+      expect(topSlot.recommendationReason).toContain('الأربعاء 12:00 م');
+      expect(topSlot.recommendationReason).toContain('9.6M');
+      expect(topSlot.source).toBe('BENCHMARK');
+    });
+
     it('adapts and learns when user post analytics confirm or boost benchmark windows (HYBRID_LEARNED)', () => {
       const baseDate = new Date('2026-09-12T00:00:00Z');
       // Historical post on Tuesday 9:00 AM Cairo time (2026-09-08 06:00 UTC) with massive engagement

@@ -569,4 +569,101 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.data).toHaveLength(1);
     expect(json.data[0].source).toBe('HYBRID_LEARNED');
   });
+
+  it('GET /v1/posts/smart-schedule returns Threads benchmark slots (Buffer 2.5M study)', async () => {
+    const { prisma } = await import('scriora-core');
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '22222222-2222-4222-8222-222222222222';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Test Workspace',
+        slug: 'test-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/posts/smart-schedule?platform=THREADS&limit=3',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(Array.isArray(json.data)).toBe(true);
+    expect(json.data.length).toBeLessThanOrEqual(3);
+    expect(json.data[0].source).toBe('BENCHMARK');
+  });
+
+  it('POST /v1/posts/optimize-cross-post provides intelligent platform adaptation recommendations', async () => {
+    const { prisma } = await import('scriora-core');
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const wsId = '22222222-2222-4222-8222-222222222222';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Test Workspace',
+        slug: 'test-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts/optimize-cross-post',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'Check out our new launch at https://scriora.com/launch #tech #startup #saas #growth #ai #builder',
+        targetPlatforms: ['INSTAGRAM', 'THREADS', 'X'],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.body);
+    expect(json.success).toBe(true);
+    expect(json.data.INSTAGRAM.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'MEDIA_REQUIRED' }),
+        expect.objectContaining({ code: 'INSTAGRAM_HASHTAG_LIMIT' }),
+      ])
+    );
+    expect(json.data.X.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'X_LINK_PENALTY_AVOIDANCE' })])
+    );
+  });
 });
+

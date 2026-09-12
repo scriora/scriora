@@ -25,6 +25,7 @@ export interface HistoricalPostEngagement {
   reposts?: number | undefined;
   quotes?: number | undefined;
   bookmarks?: number | undefined;
+  shares?: number | undefined;
   clicks?: number | undefined;
   engagementRate?: number | undefined;
   compositeScore?: number | undefined;
@@ -50,7 +51,9 @@ export interface SmartScheduleOptions {
   timezone?: string | undefined;
   startDate?: Date | undefined;
   daysAhead?: number | undefined;
-  platform?: ('LINKEDIN' | 'X' | 'GENERAL') | undefined;
+  platform?:
+    | ('LINKEDIN' | 'X' | 'INSTAGRAM' | 'THREADS' | 'TIKTOK' | 'YOUTUBE' | 'FACEBOOK' | 'PINTEREST' | 'BLUESKY' | 'TELEGRAM' | 'GENERAL')
+    | undefined;
   history?: HistoricalPostEngagement[] | undefined;
 }
 
@@ -309,6 +312,12 @@ export class DateTimeService {
       raw = replies * 27 + quotes * 20 + reposts * 20 + clicks * 12 + bookmarks * 8 + likes * 1;
     } else if (platform === 'LINKEDIN') {
       raw = replies * 30 + reposts * 25 + clicks * 15 + likes * 5;
+    } else if (platform === 'INSTAGRAM') {
+      // 2026 Instagram Algorithm: Sends/Shares (#1 ranking signal) + Saves/Bookmarks + Comments + Likes
+      const shares = post.shares ?? post.reposts ?? 0;
+      raw = shares * 35 + bookmarks * 25 + replies * 20 + likes * 2;
+    } else if (platform === 'THREADS') {
+      raw = replies * 35 + reposts * 25 + quotes * 20 + likes * 3;
     } else {
       raw = replies * 25 + reposts * 20 + clicks * 10 + likes * 5;
     }
@@ -605,7 +614,114 @@ export class DateTimeService {
       },
     ];
 
-    const baseTemplates = platform === 'X' ? xSlotTemplates : linkedInSlotTemplates;
+    const instagramSlotTemplates = [
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 12,
+        minute: 0,
+        score: 100,
+        reason:
+          'الأربعاء 12:00 م: ذروة التصفح واستراحة الغداء على إنستغرام (دراسة Buffer لـ 9.6M منشور)',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 18,
+        minute: 0,
+        score: 98,
+        reason: 'الأربعاء 6:00 م: ذروة التفاعل المسائي والمشاركات عبر الرسائل الخاصة (DMs)',
+      },
+      {
+        dayOfWeek: 2, // Tuesday
+        hour: 19,
+        minute: 0,
+        score: 95,
+        reason: 'الثلاثاء 7:00 م: وقت استرخاء ومشاهدة الريلز بعد ساعات العمل',
+      },
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 9,
+        minute: 0,
+        score: 92,
+        reason: 'الخميس 9:00 ص: تفاعل صباحي قوي للمحتوى المرئي والستوري',
+      },
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 12,
+        minute: 0,
+        score: 90,
+        reason: 'الخميس 12:00 م: زخم تصفح منتصف النهار قبل عطلة نهاية الأسبوع',
+      },
+      {
+        dayOfWeek: 1, // Monday
+        hour: 12,
+        minute: 0,
+        score: 85,
+        reason: 'الاثنين 12:00 م: عودة النشاط وتصفح الكاروسيل في بداية الأسبوع',
+      },
+    ];
+
+    const threadsSlotTemplates = [
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 7,
+        minute: 0,
+        score: 100,
+        reason:
+          'الأربعاء 7:00 ص: أعلى أوقات التفاعل عالمياً على ثريدز قبل بدء الدوام (دراسة Buffer لـ 2.5M منشور)',
+      },
+      {
+        dayOfWeek: 4, // Thursday
+        hour: 9,
+        minute: 0,
+        score: 98,
+        reason:
+          'الخميس 9:00 ص: أفضل نافذة تفاعل أسبوعية على ثريدز لمشاركة الآراء وطرح الأسئلة المفتوحة',
+      },
+      {
+        dayOfWeek: 2, // Tuesday
+        hour: 10,
+        minute: 0,
+        score: 95,
+        reason: 'الثلاثاء 10:00 ص: ذروة التصفح التفاعلي وتبادل الردود ومناقشة الموضوعات الرائجة',
+      },
+      {
+        dayOfWeek: 3, // Wednesday
+        hour: 12,
+        minute: 0,
+        score: 93,
+        reason: 'الأربعاء 12:00 م: استراحة الظهيرة وزيادة تصفح الصور والأفكار في منتصف الأسبوع',
+      },
+      {
+        dayOfWeek: 5, // Friday
+        hour: 10,
+        minute: 0,
+        score: 90,
+        reason: 'الجمعة 10:00 ص: تفاعل قوي على منشورات المجتمع والقصص الواقعية قبل العطلة',
+      },
+      {
+        dayOfWeek: 1, // Monday
+        hour: 12,
+        minute: 0,
+        score: 87,
+        reason: 'الاثنين 12:00 م: عودة النشاط ومطالعة الموضوعات الجديدة مع بداية أسبوع العمل',
+      },
+      {
+        dayOfWeek: 6, // Saturday
+        hour: 10,
+        minute: 0,
+        score: 80,
+        reason: 'السبت 10:00 ص: أفضل أوقات عطلة نهاية الأسبوع للتصفح الهادئ والمحتوى الشخصي',
+      },
+    ];
+
+    const baseTemplates =
+      platform === 'X'
+        ? xSlotTemplates
+        : platform === 'INSTAGRAM'
+          ? instagramSlotTemplates
+          : platform === 'THREADS'
+            ? threadsSlotTemplates
+            : linkedInSlotTemplates;
     const learnedTemplates = this.learnScheduleTemplates(
       history,
       timezone,
