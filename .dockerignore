@@ -1,0 +1,15 @@
+.git
+.github
+.codex
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+*.log
+.env
+.env.*
+!.env.example
+security_best_practices_report.md

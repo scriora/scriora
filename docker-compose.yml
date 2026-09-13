@@ -8,7 +8,7 @@
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: scriora
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
@@ -24,7 +24,7 @@
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
