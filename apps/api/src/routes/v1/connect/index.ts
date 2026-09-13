@@ -1047,14 +1047,16 @@ export const connectRoutes: FastifyPluginAsync = async (fastify) => {
   // 6. Discord Automated Guild & Channel Discovery
   fastify.get('/discord/channels', { preHandler: [verifyAuth] }, async (request, reply) => {
     const query = request.query as {
-      botToken?: string;
       socialAccountId?: string;
       guildId?: string;
     };
-    const headerToken = request.headers['x-discord-bot-token'] as string | undefined;
+    const headerToken = request.headers['x-discord-bot-token'];
     const userId = request.authContext!.userId;
 
-    let token = query.botToken || headerToken;
+    let token =
+      typeof headerToken === 'string' && headerToken.trim().length > 0
+        ? headerToken.trim()
+        : undefined;
 
     if (query.socialAccountId) {
       const accountIdResult = z.string().uuid().safeParse(query.socialAccountId);
