@@ -246,12 +246,12 @@ enum SkillExecutionStatus {
 
 /// Agent Memory Tier — maps to 6-tier architecture in ENGINEERING_SPECIFICATION.md §15
 enum MemoryTier {
-  WORKING      /// T1 — Redis: in-flight task context (volatile)
-  EPHEMERAL    /// T2 — Redis: short-term session scratchpad (volatile)
-  EPISODIC     /// T3 — PostgreSQL: timestamped event log of decisions
-  SEMANTIC     /// T4 — PostgreSQL + pgvector: cosine-searchable knowledge
-  PROCEDURAL   /// T5 — PostgreSQL: skill blueprints and playbooks
-  EVALUATIVE   /// T6 — PostgreSQL: scored outcomes and A/B results
+  WORKING /// T1 — Redis: in-flight task context (volatile)
+  EPHEMERAL /// T2 — Redis: short-term session scratchpad (volatile)
+  EPISODIC /// T3 — PostgreSQL: timestamped event log of decisions
+  SEMANTIC /// T4 — PostgreSQL + pgvector: cosine-searchable knowledge
+  PROCEDURAL /// T5 — PostgreSQL: skill blueprints and playbooks
+  EVALUATIVE /// T6 — PostgreSQL: scored outcomes and A/B results
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -259,31 +259,32 @@ enum MemoryTier {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model User {
-  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email               String           @unique
-  name                String
-  avatarUrl           String?          @map("avatar_url")
-  authProvider        UserAuthProvider @default(LOCAL) @map("auth_provider")
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String           @unique
+  name               String
+  avatarUrl          String?          @map("avatar_url")
+  authProvider       UserAuthProvider @default(LOCAL) @map("auth_provider")
   /// Argon2id hash — null for MAGIC_LINK, GOOGLE, GITHUB auth providers
-  passwordHash        String?          @map("password_hash") @db.Text
+  passwordHash       String?          @map("password_hash") @db.Text
   /// Single-use magic link token hash (SHA-256). Cleared after use.
-  magicLinkTokenHash  String?          @map("magic_link_token_hash") @db.VarChar(64)
-  magicLinkExpiresAt  DateTime?        @map("magic_link_expires_at") @db.Timestamptz(6)
-  emailVerifiedAt     DateTime?        @map("email_verified_at") @db.Timestamptz(6)
-  lastLoginAt         DateTime?        @map("last_login_at") @db.Timestamptz(6)
-  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  magicLinkTokenHash String?          @map("magic_link_token_hash") @db.VarChar(64)
+  magicLinkExpiresAt DateTime?        @map("magic_link_expires_at") @db.Timestamptz(6)
+  emailVerifiedAt    DateTime?        @map("email_verified_at") @db.Timestamptz(6)
+  lastLoginAt        DateTime?        @map("last_login_at") @db.Timestamptz(6)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relationships
-  ownedWorkspaces     Workspace[]       @relation("WorkspaceOwner")
-  memberships         WorkspaceMember[]
-  apiKeys             ApiKey[]
-  createdContents     Content[]         @relation("ContentCreator")
-  publications        Publication[]     @relation("PublicationCreator")
-  missionsCreated     Mission[]         @relation("MissionCreator")
-  approvalsReq        Approval[]        @relation("ApprovalRequester")
-  approvalsDec        Approval[]        @relation("ApprovalDecider")
-  refreshSessions     RefreshSession[]
+  ownedWorkspaces    Workspace[]         @relation("WorkspaceOwner")
+  memberships        WorkspaceMember[]
+  apiKeys            ApiKey[]
+  createdContents    Content[]           @relation("ContentCreator")
+  publications       Publication[]       @relation("PublicationCreator")
+  missionsCreated    Mission[]           @relation("MissionCreator")
+  approvalsReq       Approval[]          @relation("ApprovalRequester")
+  approvalsDec       Approval[]          @relation("ApprovalDecider")
+  refreshSessions    RefreshSession[]
+  oauthConnectNonces OAuthConnectNonce[]
 
   @@index([email])
   @@index([magicLinkTokenHash])
@@ -308,32 +309,33 @@ model Workspace {
   updatedAt            DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Foreign keys
-  owner                User             @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  owner User @relation("WorkspaceOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
 
   // Tenant Collections
-  members              WorkspaceMember[]
-  apiKeys              ApiKey[]
-  socialAccounts       SocialAccount[]
-  contents             Content[]
-  contentVariants      ContentVariant[]
-  publications         Publication[]
-  publishAttempts      PublishAttempt[]
-  outboxCommands       OutboxCommand[]
-  approvals            Approval[]
-  approvalTokens       ApprovalToken[]
-  mediaAssets          MediaAsset[]
-  missions             Mission[]
-  goals                Goal[]
-  strategies           Strategy[]
-  hypotheses           GrowthHypothesis[]
-  experiments          Experiment[]
-  experimentVariants   ExperimentContentVariant[]
-  analyticsSnapshots   AnalyticsSnapshot[]
-  evidenceRecords      EvidenceRecord[]
-  insights             Insight[]
-  decisions            Decision[]
-  memories             Memory[]
-  agentTasks           AgentTask[]
+  members            WorkspaceMember[]
+  apiKeys            ApiKey[]
+  socialAccounts     SocialAccount[]
+  contents           Content[]
+  contentVariants    ContentVariant[]
+  publications       Publication[]
+  publishAttempts    PublishAttempt[]
+  outboxCommands     OutboxCommand[]
+  approvals          Approval[]
+  approvalTokens     ApprovalToken[]
+  oauthConnectNonces OAuthConnectNonce[]
+  mediaAssets        MediaAsset[]
+  missions           Mission[]
+  goals              Goal[]
+  strategies         Strategy[]
+  hypotheses         GrowthHypothesis[]
+  experiments        Experiment[]
+  experimentVariants ExperimentContentVariant[]
+  analyticsSnapshots AnalyticsSnapshot[]
+  evidenceRecords    EvidenceRecord[]
+  insights           Insight[]
+  decisions          Decision[]
+  memories           Memory[]
+  agentTasks         AgentTask[]
 
   @@index([slug])
   @@map("workspaces")
@@ -345,8 +347,8 @@ model WorkspaceMember {
   workspaceRole WorkspaceRole @map("workspace_role")
   joinedAt      DateTime      @default(now()) @map("joined_at") @db.Timestamptz(6)
 
-  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@id([workspaceId, userId])
   @@index([userId])
@@ -374,8 +376,8 @@ model ApiKey {
   revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
   @@index([keyHash])
@@ -393,7 +395,7 @@ model RefreshSession {
   replacedBy String?   @map("replaced_by") @db.Uuid
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -409,6 +411,9 @@ model OAuthConnectNonce {
   expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
   usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
   @@map("oauth_connect_nonces")
@@ -436,20 +441,21 @@ model SocialAccount {
   analyticsSnapshots AnalyticsSnapshot[]
 
   @@unique([workspaceId, platform, externalAccountId], name: "uq_social_accounts_account")
+  @@unique([workspaceId, id], map: "social_accounts_workspace_id_id_key")
   @@index([workspaceId, status])
   @@map("social_accounts")
 }
 
 model SecretEnvelope {
-  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  socialAccountId String        @unique @map("social_account_id") @db.Uuid
-  envelopeData    Bytes         @map("envelope_data")
-  keyId           String        @map("key_id") @db.VarChar(100)
-  algorithm       String        @default("AES-256-GCM") @db.VarChar(50)
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  socialAccountId String   @unique @map("social_account_id") @db.Uuid
+  envelopeData    Bytes    @map("envelope_data")
+  keyId           String   @map("key_id") @db.VarChar(100)
+  algorithm       String   @default("AES-256-GCM") @db.VarChar(50)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  socialAccount   SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount @relation(fields: [socialAccountId], references: [id], onDelete: Cascade)
 
   @@map("secret_envelopes")
 }
@@ -459,42 +465,44 @@ model SecretEnvelope {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model Content {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId     String          @map("workspace_id") @db.Uuid
-  title           String?         @db.VarChar(255)
-  body            String?         @db.Text
-  status          ContentStatus   @default(DRAFT)
-  createdByUserId String?         @map("created_by_user_id") @db.Uuid
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  title           String?       @db.VarChar(255)
+  body            String?       @db.Text
+  status          ContentStatus @default(DRAFT)
+  createdByUserId String?       @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
-  workspace       Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  creator         User?           @relation("ContentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  variants        ContentVariant[]
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator   User?            @relation("ContentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  variants  ContentVariant[]
 
+  @@unique([workspaceId, id], map: "contents_workspace_id_id_key")
   @@index([workspaceId, createdAt(sort: Desc)])
   @@map("contents")
 }
 
 model ContentVariant {
-  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId        String           @map("workspace_id") @db.Uuid
-  contentId          String           @map("content_id") @db.Uuid
-  platform           SocialPlatform?
-  socialAccountId    String?          @map("social_account_id") @db.Uuid
-  body               String?          @db.Text
-  metadata           Json             @default("{}")
-  status             ContentVariantStatus @default(DRAFT)
-  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String               @map("workspace_id") @db.Uuid
+  contentId       String               @map("content_id") @db.Uuid
+  platform        SocialPlatform?
+  socialAccountId String?              @map("social_account_id") @db.Uuid
+  body            String?              @db.Text
+  metadata        Json                 @default("{}")
+  status          ContentVariantStatus @default(DRAFT)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace          Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  content            Content          @relation(fields: [contentId], references: [id], onDelete: Cascade)
-  socialAccount      SocialAccount?   @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  workspace          Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  content            Content                    @relation(fields: [workspaceId, contentId], references: [workspaceId, id], onDelete: Cascade)
+  socialAccount      SocialAccount?             @relation(fields: [workspaceId, socialAccountId], references: [workspaceId, id], onDelete: Restrict)
   publications       Publication[]
   experimentBindings ExperimentContentVariant[]
 
+  @@unique([workspaceId, id], map: "content_variants_workspace_id_id_key")
   @@index([contentId])
   @@index([workspaceId, createdAt(sort: Desc)])
   @@map("content_variants")
@@ -517,15 +525,16 @@ model Publication {
   createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  contentVariant     ContentVariant    @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
-  socialAccount      SocialAccount     @relation(fields: [socialAccountId], references: [id], onDelete: Restrict)
-  creator            User?             @relation("PublicationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contentVariant     ContentVariant      @relation(fields: [workspaceId, contentVariantId], references: [workspaceId, id], onDelete: Restrict)
+  socialAccount      SocialAccount       @relation(fields: [workspaceId, socialAccountId], references: [workspaceId, id], onDelete: Restrict)
+  creator            User?               @relation("PublicationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   publishAttempts    PublishAttempt[]
   outboxCommands     OutboxCommand[]
   analyticsSnapshots AnalyticsSnapshot[]
   evidenceRecords    EvidenceRecord[]
 
+  @@unique([workspaceId, id], map: "publications_workspace_id_id_key")
   @@index([workspaceId, scheduledAt])
   @@index([socialAccountId, scheduledAt])
   @@index([workspaceId, status])
@@ -553,11 +562,12 @@ model PublishAttempt {
   createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  publication      Publication          @relation(fields: [publicationId], references: [id], onDelete: Cascade)
-  outboxCommands   OutboxCommand[]
+  workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publication    Publication     @relation(fields: [workspaceId, publicationId], references: [workspaceId, id], onDelete: Cascade)
+  outboxCommands OutboxCommand[]
 
   @@unique([publicationId, attemptNumber], name: "uq_publication_attempt")
+  @@unique([workspaceId, publicationId, id], map: "publish_attempts_workspace_publication_id_id_key")
   @@index([publicationId, attemptNumber])
   @@map("publish_attempts")
 }
@@ -578,10 +588,11 @@ model OutboxCommand {
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  publication      Publication         @relation(fields: [publicationId], references: [id], onDelete: Cascade)
-  publishAttempt   PublishAttempt      @relation(fields: [publishAttemptId], references: [id], onDelete: Cascade)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  publication    Publication    @relation(fields: [workspaceId, publicationId], references: [workspaceId, id], onDelete: Cascade)
+  publishAttempt PublishAttempt @relation(fields: [workspaceId, publicationId, publishAttemptId], references: [workspaceId, publicationId, id], onDelete: Cascade, map: "outbox_commands_workspace_publication_attempt_id_fkey")
 
+  @@unique([publishAttemptId], map: "outbox_commands_publish_attempt_id_key")
   @@index([status, availableAt])
   @@map("outbox_commands")
 }
@@ -606,12 +617,13 @@ model Approval {
   createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace         Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  requester         User?                @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
-  decider           User?                @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
-  tokens            ApprovalToken[]
-  decisions         Decision[]
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  requester User?           @relation("ApprovalRequester", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+  decider   User?           @relation("ApprovalDecider", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  tokens    ApprovalToken[]
+  decisions Decision[]
 
+  @@unique([workspaceId, id], map: "approvals_workspace_id_id_key")
   @@index([workspaceId, status])
   @@index([resourceType, resourceId])
   /// Partial unique (SQL): one PENDING row per (workspace_id, resource_type, resource_id).
@@ -629,8 +641,8 @@ model ApprovalToken {
   usedAt      DateTime? @map("used_at") @db.Timestamptz(6)
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  approval    Approval  @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approval  Approval  @relation(fields: [workspaceId, approvalId], references: [workspaceId, id], onDelete: Cascade)
 
   @@index([expiresAt])
   @@map("approval_tokens")
@@ -658,7 +670,7 @@ model MediaAsset {
   updatedAt       DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   deletedAt       DateTime?            @map("deleted_at") @db.Timestamptz(6)
 
-  workspace       Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([storageKey])
@@ -670,16 +682,16 @@ model MediaAsset {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model Mission {
-  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId     String             @map("workspace_id") @db.Uuid
-  name            String             @db.VarChar(255)
-  description     String?            @db.Text
-  status          MissionStatus      @default(DRAFT)
-  startsAt        DateTime?          @map("starts_at") @db.Timestamptz(6)
-  endsAt          DateTime?          @map("ends_at") @db.Timestamptz(6)
-  createdByUserId String?            @map("created_by_user_id") @db.Uuid
-  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId     String        @map("workspace_id") @db.Uuid
+  name            String        @db.VarChar(255)
+  description     String?       @db.Text
+  status          MissionStatus @default(DRAFT)
+  startsAt        DateTime?     @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime?     @map("ends_at") @db.Timestamptz(6)
+  createdByUserId String?       @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace       Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   creator         User?              @relation("MissionCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -714,8 +726,8 @@ model Goal {
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace     Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission       Mission    @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission   Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
 
   @@index([missionId])
   @@index([workspaceId, status])
@@ -723,23 +735,23 @@ model Goal {
 }
 
 model Strategy {
-  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId    String             @map("workspace_id") @db.Uuid
-  missionId      String             @map("mission_id") @db.Uuid
-  name           String             @db.VarChar(255)
-  description    String             @db.Text
-  targetAudience Json               @default("{}") @map("target_audience")
-  contentPillars Json               @default("[]") @map("content_pillars")
-  toneProfile    Json               @default("{}") @map("tone_profile")
-  status         StrategyStatus     @default(ACTIVE)
-  version        Int                @default(1)
-  createdBy      String             @default("HUMAN") @map("created_by") @db.VarChar(50)
-  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
+  missionId      String         @map("mission_id") @db.Uuid
+  name           String         @db.VarChar(255)
+  description    String         @db.Text
+  targetAudience Json           @default("{}") @map("target_audience")
+  contentPillars Json           @default("[]") @map("content_pillars")
+  toneProfile    Json           @default("{}") @map("tone_profile")
+  status         StrategyStatus @default(ACTIVE)
+  version        Int            @default(1)
+  createdBy      String         @default("HUMAN") @map("created_by") @db.VarChar(50)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission        Mission            @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  hypotheses     GrowthHypothesis[]
+  workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission    Mission            @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  hypotheses GrowthHypothesis[]
 
   @@unique([missionId, version], name: "uq_strategies_version")
   @@index([missionId, version(sort: Desc)])
@@ -762,10 +774,10 @@ model GrowthHypothesis {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission          Mission          @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  strategy         Strategy         @relation(fields: [strategyId], references: [id], onDelete: Cascade)
-  experiments      Experiment[]
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission     Mission      @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  strategy    Strategy     @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  experiments Experiment[]
 
   @@unique([missionId, key], name: "uq_hypotheses_key")
   @@index([missionId, status])
@@ -774,18 +786,18 @@ model GrowthHypothesis {
 }
 
 model Experiment {
-  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId     String                     @map("workspace_id") @db.Uuid
-  missionId       String                     @map("mission_id") @db.Uuid
-  hypothesisId    String                     @map("hypothesis_id") @db.Uuid
-  name            String                     @db.VarChar(255)
-  description     String?                    @db.Text
-  design          Json                       @default("{}")
-  status          ExperimentStatus           @default(PLANNED)
-  startedAt       DateTime?                  @map("started_at") @db.Timestamptz(6)
-  endedAt         DateTime?                  @map("ended_at") @db.Timestamptz(6)
-  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime                   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String           @map("workspace_id") @db.Uuid
+  missionId    String           @map("mission_id") @db.Uuid
+  hypothesisId String           @map("hypothesis_id") @db.Uuid
+  name         String           @db.VarChar(255)
+  description  String?          @db.Text
+  design       Json             @default("{}")
+  status       ExperimentStatus @default(PLANNED)
+  startedAt    DateTime?        @map("started_at") @db.Timestamptz(6)
+  endedAt      DateTime?        @map("ended_at") @db.Timestamptz(6)
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace       Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   mission         Mission                    @relation(fields: [missionId], references: [id], onDelete: Cascade)
@@ -801,16 +813,16 @@ model Experiment {
 }
 
 model ExperimentContentVariant {
-  experimentId     String         @map("experiment_id") @db.Uuid
-  contentVariantId String         @map("content_variant_id") @db.Uuid
-  workspaceId      String         @map("workspace_id") @db.Uuid
-  variantRole      VariantRole    @map("variant_role")
-  cohortTag        String?        @map("cohort_tag") @db.VarChar(50)
-  assignedAt       DateTime       @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  experimentId     String      @map("experiment_id") @db.Uuid
+  contentVariantId String      @map("content_variant_id") @db.Uuid
+  workspaceId      String      @map("workspace_id") @db.Uuid
+  variantRole      VariantRole @map("variant_role")
+  cohortTag        String?     @map("cohort_tag") @db.VarChar(50)
+  assignedAt       DateTime    @default(now()) @map("assigned_at") @db.Timestamptz(6)
 
-  experiment       Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  contentVariant   ContentVariant @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  experiment     Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  contentVariant ContentVariant @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@id([experimentId, contentVariantId])
   @@map("experiment_content_variants")
@@ -821,21 +833,21 @@ model ExperimentContentVariant {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model AnalyticsSnapshot {
-  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId        String            @map("workspace_id") @db.Uuid
-  socialAccountId    String?           @map("social_account_id") @db.Uuid
-  publicationId      String?           @map("publication_id") @db.Uuid
-  capturedAt         DateTime          @default(now()) @map("captured_at") @db.Timestamptz(6)
-  observationWindow  ObservationWindow @map("observation_window")
-  source             String            @db.VarChar(100)
-  status             String            @default("COMPLETE") @db.VarChar(50)
-  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId       String            @map("workspace_id") @db.Uuid
+  socialAccountId   String?           @map("social_account_id") @db.Uuid
+  publicationId     String?           @map("publication_id") @db.Uuid
+  capturedAt        DateTime          @default(now()) @map("captured_at") @db.Timestamptz(6)
+  observationWindow ObservationWindow @map("observation_window")
+  source            String            @db.VarChar(100)
+  status            String            @default("COMPLETE") @db.VarChar(50)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  workspace          Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  socialAccount      SocialAccount?    @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
-  publication        Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
-  metrics            AnalyticsMetric[]
-  evidenceRecords    EvidenceRecord[]
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  socialAccount   SocialAccount?    @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  publication     Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  metrics         AnalyticsMetric[]
+  evidenceRecords EvidenceRecord[]
 
   @@unique([publicationId, observationWindow], name: "uq_snapshots_window")
   @@index([workspaceId, capturedAt(sort: Desc)])
@@ -844,40 +856,40 @@ model AnalyticsSnapshot {
 }
 
 model AnalyticsMetric {
-  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  snapshotId   String            @map("snapshot_id") @db.Uuid
-  metricKey    String            @map("metric_key") @db.VarChar(100)
-  valueNumeric Decimal?          @map("value_numeric") @db.Decimal(18, 4)
-  valueText    String?           @map("value_text") @db.Text
-  status       MetricStatus      @default(AVAILABLE)
-  sourceMetric String?           @map("source_metric") @db.VarChar(100)
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  snapshotId   String       @map("snapshot_id") @db.Uuid
+  metricKey    String       @map("metric_key") @db.VarChar(100)
+  valueNumeric Decimal?     @map("value_numeric") @db.Decimal(18, 4)
+  valueText    String?      @map("value_text") @db.Text
+  status       MetricStatus @default(AVAILABLE)
+  sourceMetric String?      @map("source_metric") @db.VarChar(100)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  snapshot     AnalyticsSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  snapshot AnalyticsSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
   @@unique([snapshotId, metricKey], name: "uq_metrics_key")
   @@map("analytics_metrics")
 }
 
 model EvidenceRecord {
-  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId      String             @map("workspace_id") @db.Uuid
-  missionId        String?            @map("mission_id") @db.Uuid
-  experimentId     String?            @map("experiment_id") @db.Uuid
-  publicationId    String?            @map("publication_id") @db.Uuid
-  metricSnapshotId String?            @map("metric_snapshot_id") @db.Uuid
-  evidenceType     String             @map("evidence_type") @db.VarChar(50)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String   @map("workspace_id") @db.Uuid
+  missionId        String?  @map("mission_id") @db.Uuid
+  experimentId     String?  @map("experiment_id") @db.Uuid
+  publicationId    String?  @map("publication_id") @db.Uuid
+  metricSnapshotId String?  @map("metric_snapshot_id") @db.Uuid
+  evidenceType     String   @map("evidence_type") @db.VarChar(50)
   value            Json
-  capturedAt       DateTime           @default(now()) @map("captured_at") @db.Timestamptz(6)
-  source           String             @db.VarChar(100)
-  confidence       Decimal            @default(1.0) @db.Decimal(5, 4)
-  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  capturedAt       DateTime @default(now()) @map("captured_at") @db.Timestamptz(6)
+  source           String   @db.VarChar(100)
+  confidence       Decimal  @default(1.0) @db.Decimal(5, 4)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  workspace        Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission          Mission?           @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  experiment       Experiment?        @relation(fields: [experimentId], references: [id], onDelete: SetNull)
-  publication      Publication?       @relation(fields: [publicationId], references: [id], onDelete: SetNull)
-  metricSnapshot   AnalyticsSnapshot? @relation(fields: [metricSnapshotId], references: [id], onDelete: SetNull)
+  workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission        Mission?           @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  experiment     Experiment?        @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  publication    Publication?       @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  metricSnapshot AnalyticsSnapshot? @relation(fields: [metricSnapshotId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, capturedAt(sort: Desc)])
   @@index([experimentId, capturedAt(sort: Desc)])
@@ -899,10 +911,10 @@ model Insight {
   createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace       Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission         Mission?              @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  experiment      Experiment?           @relation(fields: [experimentId], references: [id], onDelete: SetNull)
-  decisions       Decision[]
+  workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission    Mission?    @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  experiment Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  decisions  Decision[]
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([missionId, createdAt(sort: Desc)])
@@ -924,10 +936,10 @@ model Decision {
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   executedAt       DateTime?      @map("executed_at") @db.Timestamptz(6)
 
-  workspace        Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission          Mission?       @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  insight          Insight?       @relation(fields: [insightId], references: [id], onDelete: SetNull)
-  approval         Approval?      @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission   Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  insight   Insight?  @relation(fields: [insightId], references: [id], onDelete: SetNull)
+  approval  Approval? @relation(fields: [approvalId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([missionId, createdAt(sort: Desc)])
@@ -936,26 +948,26 @@ model Decision {
 }
 
 model Memory {
-  id          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId String                   @map("workspace_id") @db.Uuid
-  missionId   String?                  @map("mission_id") @db.Uuid
-  tier        MemoryTier               @default(EPISODIC)
-  category    String                   @db.VarChar(50)
-  content     String                   @db.Text
+  id          String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId String                       @map("workspace_id") @db.Uuid
+  missionId   String?                      @map("mission_id") @db.Uuid
+  tier        MemoryTier                   @default(EPISODIC)
+  category    String                       @db.VarChar(50)
+  content     String                       @db.Text
   /// pgvector embedding (1536-dim, OpenAI text-embedding-3-small compatible)
   /// Used for T4 Semantic Memory cosine similarity search via pgvector
   embedding   Unsupported("vector(1536)")?
-  sourceType  String                   @map("source_type") @db.VarChar(50)
-  sourceId    String?                  @map("source_id") @db.Uuid
-  confidence  Decimal                  @default(1.0) @db.Decimal(5, 4)
-  importance  Decimal?                 @default(0.5) @db.Decimal(5, 4)
-  validFrom   DateTime?                @default(now()) @map("valid_from") @db.Timestamptz(6)
-  validUntil  DateTime?                @map("valid_until") @db.Timestamptz(6)
-  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourceType  String                       @map("source_type") @db.VarChar(50)
+  sourceId    String?                      @map("source_id") @db.Uuid
+  confidence  Decimal                      @default(1.0) @db.Decimal(5, 4)
+  importance  Decimal?                     @default(0.5) @db.Decimal(5, 4)
+  validFrom   DateTime?                    @default(now()) @map("valid_from") @db.Timestamptz(6)
+  validUntil  DateTime?                    @map("valid_until") @db.Timestamptz(6)
+  createdAt   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace   Workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission     Mission?                 @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission   Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, tier])
   @@index([workspaceId, category])
@@ -969,21 +981,21 @@ model Memory {
 // ═══════════════════════════════════════════════════════════════════════════
 
 model AgentTask {
-  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  workspaceId      String            @map("workspace_id") @db.Uuid
-  missionId        String?           @map("mission_id") @db.Uuid
-  taskType         String            @map("task_type") @db.VarChar(100)
-  parameters       Json              @default("{}")
-  status           AgentTaskStatus   @default(PENDING)
-  startedAt        DateTime?         @map("started_at") @db.Timestamptz(6)
-  completedAt      DateTime?         @map("completed_at") @db.Timestamptz(6)
-  errorDetails     Json?             @map("error_details")
-  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String          @map("workspace_id") @db.Uuid
+  missionId    String?         @map("mission_id") @db.Uuid
+  taskType     String          @map("task_type") @db.VarChar(100)
+  parameters   Json            @default("{}")
+  status       AgentTaskStatus @default(PENDING)
+  startedAt    DateTime?       @map("started_at") @db.Timestamptz(6)
+  completedAt  DateTime?       @map("completed_at") @db.Timestamptz(6)
+  errorDetails Json?           @map("error_details")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission          Mission?          @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  skillExecutions  SkillExecution[]
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission         Mission?         @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  skillExecutions SkillExecution[]
 
   @@index([workspaceId, status])
   @@index([missionId])
@@ -1003,7 +1015,7 @@ model SkillExecution {
   errorDetails Json?                @map("error_details")
   createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  agentTask    AgentTask            @relation(fields: [agentTaskId], references: [id], onDelete: Cascade)
+  agentTask    AgentTask     @relation(fields: [agentTaskId], references: [id], onDelete: Cascade)
   providerRuns ProviderRun[]
 
   @@index([agentTaskId])
@@ -1012,19 +1024,19 @@ model SkillExecution {
 }
 
 model ProviderRun {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  skillExecutionId String         @map("skill_execution_id") @db.Uuid
-  provider         String         @db.VarChar(50)
-  modelId          String         @map("model_id") @db.VarChar(100)
-  promptTokens     Int            @default(0) @map("prompt_tokens")
-  completionTokens Int            @default(0) @map("completion_tokens")
-  costUsd          Decimal        @default(0) @map("cost_usd") @db.Decimal(10, 6)
-  latencyMs        Int            @map("latency_ms")
-  success          Boolean        @default(true)
-  errorMessage     String?        @map("error_message") @db.Text
-  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  skillExecutionId String   @map("skill_execution_id") @db.Uuid
+  provider         String   @db.VarChar(50)
+  modelId          String   @map("model_id") @db.VarChar(100)
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  costUsd          Decimal  @default(0) @map("cost_usd") @db.Decimal(10, 6)
+  latencyMs        Int      @map("latency_ms")
+  success          Boolean  @default(true)
+  errorMessage     String?  @map("error_message") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  skillExecution   SkillExecution @relation(fields: [skillExecutionId], references: [id], onDelete: Cascade)
+  skillExecution SkillExecution @relation(fields: [skillExecutionId], references: [id], onDelete: Cascade)
 
   @@index([skillExecutionId])
   @@index([provider, modelId])
