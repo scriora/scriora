@@ -53,19 +53,14 @@ function hashRefreshToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-async function persistRefreshSession(
-  fastify: FastifyInstance,
-  reply: FastifyReply,
-  userId: string
-): Promise<string> {
-  const refreshToken = fastify.jwt.sign({ sub: userId, type: 'refresh' }, { expiresIn: '30d' });
-  await prisma.refreshSession.create({
-    data: {
-      userId,
-      tokenHash: hashRefreshToken(refreshToken),
-      expiresAt: new Date(Date.now() + REFRESH_TTL_SECONDS * 1000),
-    },
-  });
+function createRefreshToken(fastify: FastifyInstance, userId: string): string {
+  return fastify.jwt.sign(
+    { sub: userId, type: 'refresh', jti: crypto.randomUUID() },
+    { expiresIn: '30d' }
+  );
+}
+
+function setRefreshCookie(reply: FastifyReply, refreshToken: string): void {
   reply.setCookie('refreshToken', refreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -73,6 +68,22 @@ async function persistRefreshSession(
     path: '/v1/auth',
     maxAge: REFRESH_TTL_SECONDS,
   });
+}
+
+async function persistRefreshSession(
+  fastify: FastifyInstance,
+  reply: FastifyReply,
+  userId: string
+): Promise<string> {
+  const refreshToken = createRefreshToken(fastify, userId);
+  await prisma.refreshSession.create({
+    data: {
+      userId,
+      tokenHash: hashRefreshToken(refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TTL_SECONDS * 1000),
+    },
+  });
+  setRefreshCookie(reply, refreshToken);
   return refreshToken;
 }
 
@@ -427,8 +438,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
             );
         }
 
+        const presentedTokenHash = hashRefreshToken(token);
         const presented = await prisma.refreshSession.findUnique({
-          where: { tokenHash: hashRefreshToken(token) },
+          where: { tokenHash: presentedTokenHash },
         });
         if (
           !presented ||
@@ -452,18 +464,38 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           { sub: user.id, email: user.email },
           { expiresIn: '15m' }
         );
-        const nextRefresh = await persistRefreshSession(fastify, reply, user.id);
-        const replacement = await prisma.refreshSession.findUnique({
-          where: { tokenHash: hashRefreshToken(nextRefresh) },
-          select: { id: true },
+        const nextRefresh = createRefreshToken(fastify, user.id);
+        const rotatedAt = new Date();
+
+        await prisma.$transaction(async (tx) => {
+          const claimed = await tx.refreshSession.updateMany({
+            where: {
+              id: presented.id,
+              userId: user.id,
+              tokenHash: presentedTokenHash,
+              revokedAt: null,
+              expiresAt: { gt: rotatedAt },
+            },
+            data: { revokedAt: rotatedAt },
+          });
+          if (claimed.count !== 1) {
+            throw new Error('REFRESH_SESSION_ALREADY_ROTATED');
+          }
+
+          const replacement = await tx.refreshSession.create({
+            data: {
+              userId: user.id,
+              tokenHash: hashRefreshToken(nextRefresh),
+              expiresAt: new Date(rotatedAt.getTime() + REFRESH_TTL_SECONDS * 1000),
+            },
+            select: { id: true },
+          });
+          await tx.refreshSession.update({
+            where: { id: presented.id },
+            data: { replacedBy: replacement.id },
+          });
         });
-        await prisma.refreshSession.update({
-          where: { id: presented.id },
-          data: {
-            revokedAt: new Date(),
-            replacedBy: replacement?.id ?? null,
-          },
-        });
+        setRefreshCookie(reply, nextRefresh);
         return reply.status(200).send(ok({ accessToken: newAccessToken }, request.id));
       } catch {
         return reply

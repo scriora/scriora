@@ -116,4 +116,106 @@ describe('API Routes — Auth', () => {
     const body = JSON.parse(res.body);
     expect(body.error.code).toBe('INVALID_REFRESH_TOKEN');
   });
+
+  it('POST /v1/auth/refresh atomically rotates an active session', async () => {
+    const refreshToken = app.jwt.sign(
+      { sub: 'u-123', type: 'refresh', jti: 'presented-token' },
+      { expiresIn: '30d' }
+    );
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'u-123',
+      email: 'test@scriora.io',
+      name: 'Test User',
+    } as never);
+    vi.spyOn(prisma.refreshSession, 'findUnique').mockResolvedValue({
+      id: 'sess-1',
+      userId: 'u-123',
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+
+    const claimPresented = vi.fn().mockResolvedValue({ count: 1 });
+    const createReplacement = vi.fn().mockResolvedValue({ id: 'sess-2' });
+    const linkReplacement = vi.fn().mockResolvedValue({ id: 'sess-1' });
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) =>
+      callback({
+        refreshSession: {
+          updateMany: claimPresented,
+          create: createReplacement,
+          update: linkReplacement,
+        },
+      })
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/refresh',
+      cookies: { refreshToken },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.accessToken).toBeDefined();
+    expect(claimPresented).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'sess-1', userId: 'u-123', revokedAt: null }),
+      })
+    );
+    expect(createReplacement).toHaveBeenCalledOnce();
+    expect(linkReplacement).toHaveBeenCalledWith({
+      where: { id: 'sess-1' },
+      data: { replacedBy: 'sess-2' },
+    });
+    expect(res.headers['set-cookie']).toContain('refreshToken=');
+  });
+
+  it('POST /v1/auth/refresh rejects the request when another rotation wins the CAS', async () => {
+    const refreshToken = app.jwt.sign(
+      { sub: 'u-123', type: 'refresh', jti: 'presented-token' },
+      { expiresIn: '30d' }
+    );
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+      id: 'u-123',
+      email: 'test@scriora.io',
+      name: 'Test User',
+    } as never);
+    vi.spyOn(prisma.refreshSession, 'findUnique').mockResolvedValue({
+      id: 'sess-1',
+      userId: 'u-123',
+      tokenHash: 'presented-hash',
+      revokedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+    } as never);
+    const legacyCreate = vi
+      .spyOn(prisma.refreshSession, 'create')
+      .mockResolvedValue({ id: 'sess-2' } as never);
+    const legacyUpdate = vi
+      .spyOn(prisma.refreshSession, 'update')
+      .mockResolvedValue({ id: 'sess-1' } as never);
+
+    const createReplacement = vi.fn();
+    const linkReplacement = vi.fn();
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) =>
+      callback({
+        refreshSession: {
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+          create: createReplacement,
+          update: linkReplacement,
+        },
+      })
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/refresh',
+      cookies: { refreshToken },
+    });
+
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error.code).toBe('INVALID_REFRESH_TOKEN');
+    expect(createReplacement).not.toHaveBeenCalled();
+    expect(linkReplacement).not.toHaveBeenCalled();
+    expect(legacyCreate).not.toHaveBeenCalled();
+    expect(legacyUpdate).not.toHaveBeenCalled();
+    expect(res.headers['set-cookie']).toBeUndefined();
+  });
 });
