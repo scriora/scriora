@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  crossPostOptimizer,
-  PLATFORM_LIMITS,
-} from '../../src/domain/content/cross-post-optimizer.js';
+import { crossPostOptimizer } from '../../src/domain/content/cross-post-optimizer.js';
 
 describe('CrossPostOptimizer (Buffer & Postiz Heuristics)', () => {
   it('enforces Instagram media requirement (no text-only allowed)', () => {

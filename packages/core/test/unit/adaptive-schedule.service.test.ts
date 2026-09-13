@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AdaptiveScheduleService,
-  adaptiveScheduleService,
 } from '../../src/domain/time/adaptive-schedule.service.js';
 import { DateTimeService } from '../../src/domain/time/datetime.service.js';
 

@@ -1,6 +1,5 @@
 import axios from 'axios';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { PlatformError } from '../../src/errors/social.error.js';
 import { MockThreadsAdapter } from '../../src/platforms/threads/mock.adapter.js';
 import { ThreadsAdapter } from '../../src/platforms/threads/threads.adapter.js';
 import { ThreadsOAuth } from '../../src/platforms/threads/threads.oauth.js';

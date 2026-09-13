@@ -94,10 +94,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
 
-      let user = await prisma.user.findUnique({ where: { email } });
+      const user = await prisma.user.findUnique({ where: { email } });
 
       if (!user) {
-        user = await prisma.$transaction(async (tx) => {
+        await prisma.$transaction(async (tx) => {
           const newUser = await tx.user.create({
             data: {
               email,
@@ -125,8 +125,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
               workspaceRole: 'OWNER',
             },
           });
-
-          return newUser;
         });
       } else {
         await prisma.user.update({
