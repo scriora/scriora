@@ -197,16 +197,32 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         );
     }
 
-    // Clear token
-    await prisma.user.update({
-      where: { id: user.id },
+    const verifiedAt = new Date();
+    const claimed = await prisma.user.updateMany({
+      where: {
+        id: user.id,
+        magicLinkTokenHash: tokenHash,
+        magicLinkExpiresAt: { gt: verifiedAt },
+      },
       data: {
         magicLinkTokenHash: null,
         magicLinkExpiresAt: null,
-        emailVerifiedAt: user.emailVerifiedAt || new Date(),
-        lastLoginAt: new Date(),
+        emailVerifiedAt: user.emailVerifiedAt || verifiedAt,
+        lastLoginAt: verifiedAt,
       },
     });
+    if (claimed.count !== 1) {
+      return reply
+        .status(401)
+        .send(
+          err(
+            'INVALID_OR_EXPIRED_TOKEN',
+            'AUTHENTICATION_ERROR',
+            'Magic link is invalid or expired',
+            request.id
+          )
+        );
+    }
 
     const accessToken = fastify.jwt.sign({ sub: user.id, email: user.email }, { expiresIn: '15m' });
     await persistRefreshSession(fastify, reply, user.id);
