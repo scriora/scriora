@@ -3,10 +3,7 @@ import argon2 from 'argon2';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { prisma } from 'scriora-core';
 import { z } from 'zod';
-import {
-  buildMagicLinkVerifyUrl,
-  deliverMagicLink,
-} from '../../../lib/magic-link-mailer.js';
+import { buildMagicLinkVerifyUrl, deliverMagicLink } from '../../../lib/magic-link-mailer.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 
