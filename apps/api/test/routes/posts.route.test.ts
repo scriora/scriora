@@ -86,11 +86,9 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.error.details).toBeDefined();
   });
 
-  it('POST /v1/posts rejects a target platform that differs from the stored account', async () => {
+  it('POST /v1/posts rejects a mission outside the active workspace', async () => {
     const { prisma } = await import('scriora-core');
     const wsId = '22222222-2222-4222-8222-222222222222';
-    const socialAccountId = '33333333-3333-4333-8333-333333333333';
-
     vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
       workspaceId: wsId,
       userId: 'user-123',
@@ -111,28 +109,27 @@ describe('API Routes — Posts (Unified Gateway)', () => {
         updatedAt: new Date(),
       },
     } as any);
-    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
-    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
-      { id: socialAccountId, platform: 'X' },
-    ] as any);
+    vi.spyOn(prisma.mission, 'findFirst').mockResolvedValue(null);
     const transactionSpy = vi.spyOn(prisma, '$transaction');
-
     const token = app.jwt.sign({ sub: 'user-123' });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/posts',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'x-workspace-id': wsId,
-      },
+      headers: { authorization: `Bearer ${token}`, 'x-workspace-id': wsId },
       payload: {
-        body: 'The platform must come from the stored account.',
-        targets: [{ socialAccountId, platform: 'LINKEDIN' }],
+        body: 'Mission-bound post',
+        missionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        targets: [
+          {
+            socialAccountId: '33333333-3333-4333-8333-333333333333',
+            platform: 'LINKEDIN',
+          },
+        ],
       },
     });
 
-    expect(res.statusCode).toBe(400);
-    expect(JSON.parse(res.body).error.code).toBe('SOCIAL_ACCOUNT_PLATFORM_MISMATCH');
+    expect(res.statusCode).toBe(404);
+    expect(JSON.parse(res.body).error.code).toBe('MISSION_NOT_FOUND');
     expect(transactionSpy).not.toHaveBeenCalled();
   });
 

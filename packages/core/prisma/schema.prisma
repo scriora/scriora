@@ -467,6 +467,7 @@ model SecretEnvelope {
 model Content {
   id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   workspaceId     String        @map("workspace_id") @db.Uuid
+  missionId       String?       @map("mission_id") @db.Uuid
   title           String?       @db.VarChar(255)
   body            String?       @db.Text
   status          ContentStatus @default(DRAFT)
@@ -476,11 +477,13 @@ model Content {
   deletedAt       DateTime?     @map("deleted_at") @db.Timestamptz(6)
 
   workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  mission   Mission?         @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
   creator   User?            @relation("ContentCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
   variants  ContentVariant[]
 
   @@unique([workspaceId, id], map: "contents_workspace_id_id_key")
   @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, missionId])
   @@map("contents")
 }
 
@@ -704,7 +707,9 @@ model Mission {
   decisions       Decision[]
   agentTasks      AgentTask[]
   memories        Memory[]
+  contents        Content[]
 
+  @@unique([workspaceId, id], map: "missions_workspace_id_id_key")
   @@index([workspaceId, status])
   @@index([workspaceId, endsAt])
   @@map("missions")

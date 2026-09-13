@@ -61,6 +61,7 @@ export const CreatePostToolInputSchema = z.object({
     .max(10),
   mediaUrls: z.array(z.string().url()).max(10).optional(),
   scheduledAt: z.string().datetime().optional(),
+  missionId: z.string().uuid().optional(),
   idempotencyKey: z.string().uuid().optional(),
 });
 
@@ -195,6 +196,7 @@ export async function executeCreatePost(
       targets: mapTargetsToPublishTargets(input.targets),
       ...(input.mediaUrls ? { mediaUrls: input.mediaUrls } : {}),
       ...(input.scheduledAt ? { scheduledAt: input.scheduledAt } : {}),
+      ...(input.missionId ? { missionId: input.missionId } : {}),
       idempotencyKey,
     });
   } catch (error: unknown) {

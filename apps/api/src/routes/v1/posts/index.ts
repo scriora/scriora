@@ -64,6 +64,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
       media,
       mediaUrls,
       scheduledAt,
+      missionId,
       idempotencyKey: bodyKey,
     } = parseResult.data;
     const resolvedKey = resolveRequestIdempotencyKey({
@@ -95,6 +96,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         ...(media ? { media } : {}),
         ...(mediaUrls ? { mediaUrls } : {}),
         ...(scheduledAt ? { scheduledAt } : {}),
+        ...(missionId ? { missionId } : {}),
         idempotencyKey,
       });
     } catch (error: unknown) {
@@ -102,6 +104,11 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         return reply
           .status(404)
           .send(err('SOCIAL_ACCOUNT_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
+      }
+      if (error instanceof CreatePostError && error.code === 'MISSION_NOT_FOUND') {
+        return reply
+          .status(404)
+          .send(err('MISSION_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
       }
       if (error instanceof CreatePostError && error.code === 'UNSAFE_REMOTE_URL') {
         return reply

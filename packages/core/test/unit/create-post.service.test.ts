@@ -44,6 +44,9 @@ function createMockDb(
   accounts: Array<{ id: string; platform: string }>
 ) {
   return {
+    mission: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'mission-1' }),
+    },
     publication: {
       findFirst: vi.fn().mockResolvedValue(null),
     },
@@ -61,8 +64,53 @@ const workspaceId = '11111111-1111-4111-8111-111111111111';
 const accountId = '22222222-2222-4222-8222-222222222222';
 const secondAccountId = '44444444-4444-4444-8444-444444444444';
 const userId = '33333333-3333-4333-8333-333333333333';
+const missionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 describe('createUnifiedPost', () => {
+  it('persists an in-workspace mission on the created content', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
+
+    await createUnifiedPost(db as any, {
+      workspaceId,
+      createdByUserId: userId,
+      requiresApproval: false,
+      body: 'Mission-linked content',
+      targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+      missionId,
+      idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    });
+
+    expect(db.mission.findFirst).toHaveBeenCalledWith({
+      where: { id: missionId, workspaceId },
+      select: { id: true },
+    });
+    expect(tx.content.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ missionId, workspaceId }),
+      })
+    );
+  });
+
+  it('rejects a mission that does not belong to the workspace before writing', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
+    db.mission.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        requiresApproval: false,
+        body: 'Cross-tenant mission',
+        targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+        missionId,
+        idempotencyKey: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      })
+    ).rejects.toMatchObject({ code: 'MISSION_NOT_FOUND' });
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
   it('creates publications and a sweepable outbox when approval is not required', async () => {
     const tx = createMockTx();
     const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
