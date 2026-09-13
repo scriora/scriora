@@ -29,7 +29,7 @@ jobs:
           node-version: "22"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter scriora-web exec playwright install --with-deps chromium
       - run: pnpm --filter scriora-web build
       - run: pnpm --filter scriora-web test:e2e
       - name: Upload Playwright report
