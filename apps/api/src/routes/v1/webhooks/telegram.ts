@@ -25,16 +25,13 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
   const webhookSecret = readTelegramWebhookSecret();
 
   if (!botToken) {
-    fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured; Telegram webhook is not registered.');
-    return;
+    fastify.log.warn('TELEGRAM_BOT_TOKEN is not configured; Telegram webhook is disabled.');
   }
 
   if (!webhookSecret) {
     fastify.log.warn(
       'TELEGRAM_WEBHOOK_SECRET is unset; Telegram webhook POST is rejected (fail-closed).'
     );
-    fastify.post('/', async (request, reply) => rejectTelegramWebhook(request, reply));
-    return;
   }
 
   if (!adminChatId) {
@@ -43,10 +40,12 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
     );
   }
 
-  const botService = new TelegramBotService({
-    botToken,
-    ...(adminChatId ? { adminChatId } : {}),
-  });
+  const botService = botToken
+    ? new TelegramBotService({
+        botToken,
+        ...(adminChatId ? { adminChatId } : {}),
+      })
+    : null;
 
   const dbContext: TelegramDbContext = {
     getSystemStatus: async () => {
@@ -97,6 +96,9 @@ export const telegramWebhookRoutes: FastifyPluginAsync = async (fastify) => {
   };
 
   fastify.post('/', async (request, reply) => {
+    if (!botService || !webhookSecret) {
+      return rejectTelegramWebhook(request, reply);
+    }
     const headerSecret = request.headers[TELEGRAM_WEBHOOK_SECRET_HEADER];
     if (!telegramWebhookSecretMatches(headerSecret, webhookSecret)) {
       return rejectTelegramWebhook(request, reply);
