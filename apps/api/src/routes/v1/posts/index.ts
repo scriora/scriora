@@ -104,9 +104,7 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         error instanceof CreatePostError &&
         (error.code === 'SOCIAL_ACCOUNT_NOT_FOUND' || error.code === 'MEDIA_ASSET_NOT_FOUND')
       ) {
-        return reply
-          .status(404)
-          .send(err(error.code, 'NOT_FOUND', error.message, request.id));
+        return reply.status(404).send(err(error.code, 'NOT_FOUND', error.message, request.id));
       }
       if (error instanceof CreatePostError && error.code === 'MISSION_NOT_FOUND') {
         return reply
