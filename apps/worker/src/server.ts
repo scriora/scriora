@@ -16,7 +16,7 @@ import {
   XAdapter,
   YouTubeAdapter,
 } from 'scriora-social';
-import { inngest } from './inngest.js';
+import { inngest } from './inngest/client.js';
 import { outboxSweepJob } from './jobs/outbox-sweep.job.js';
 import { publishJob } from './jobs/publish.job.js';
 import { verifyJob } from './jobs/verify.job.js';
