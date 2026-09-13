@@ -108,6 +108,15 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
           .status(400)
           .send(err('UNSAFE_REMOTE_URL', 'VALIDATION_ERROR', error.message, request.id));
       }
+      if (
+        error instanceof CreatePostError &&
+        (error.code === 'DUPLICATE_SOCIAL_ACCOUNT' ||
+          error.code === 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH')
+      ) {
+        return reply
+          .status(400)
+          .send(err(error.code, 'VALIDATION_ERROR', error.message, request.id));
+      }
       throw error;
     }
 

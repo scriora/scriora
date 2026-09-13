@@ -86,6 +86,56 @@ describe('API Routes — Posts (Unified Gateway)', () => {
     expect(json.error.details).toBeDefined();
   });
 
+  it('POST /v1/posts rejects a target platform that differs from the stored account', async () => {
+    const { prisma } = await import('scriora-core');
+    const wsId = '22222222-2222-4222-8222-222222222222';
+    const socialAccountId = '33333333-3333-4333-8333-333333333333';
+
+    vi.spyOn(prisma.workspaceMember, 'findUnique').mockResolvedValue({
+      workspaceId: wsId,
+      userId: 'user-123',
+      workspaceRole: 'OWNER',
+      joinedAt: new Date(),
+      workspace: {
+        id: wsId,
+        name: 'Test Workspace',
+        slug: 'test-ws',
+        purpose: 'WORK',
+        defaultOperatingMode: 'MANUAL',
+        ownerUserId: 'user-123',
+        country: null,
+        timezone: 'UTC',
+        requiresApproval: false,
+        settings: {},
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    } as any);
+    vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
+    vi.spyOn(prisma.socialAccount, 'findMany').mockResolvedValue([
+      { id: socialAccountId, platform: 'X' },
+    ] as any);
+    const transactionSpy = vi.spyOn(prisma, '$transaction');
+
+    const token = app.jwt.sign({ sub: 'user-123' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/posts',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'x-workspace-id': wsId,
+      },
+      payload: {
+        body: 'The platform must come from the stored account.',
+        targets: [{ socialAccountId, platform: 'LINKEDIN' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error.code).toBe('SOCIAL_ACCOUNT_PLATFORM_MISMATCH');
+    expect(transactionSpy).not.toHaveBeenCalled();
+  });
+
   it('POST /v1/posts schedules post with media, Arabic hashtags, and platform-specific options', async () => {
     const { prisma } = await import('scriora-core');
     const wsId = '22222222-2222-4222-8222-222222222222';
