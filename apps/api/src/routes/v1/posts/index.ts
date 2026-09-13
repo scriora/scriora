@@ -100,30 +100,19 @@ export const postRoutes: FastifyPluginAsync = async (fastify) => {
         idempotencyKey,
       });
     } catch (error: unknown) {
-      if (
-        error instanceof CreatePostError &&
-        (error.code === 'SOCIAL_ACCOUNT_NOT_FOUND' || error.code === 'MEDIA_ASSET_NOT_FOUND')
-      ) {
-        return reply.status(404).send(err(error.code, 'NOT_FOUND', error.message, request.id));
-      }
-      if (error instanceof CreatePostError && error.code === 'MISSION_NOT_FOUND') {
-        return reply
-          .status(404)
-          .send(err('MISSION_NOT_FOUND', 'NOT_FOUND', error.message, request.id));
-      }
-      if (error instanceof CreatePostError && error.code === 'UNSAFE_REMOTE_URL') {
-        return reply
-          .status(400)
-          .send(err('UNSAFE_REMOTE_URL', 'VALIDATION_ERROR', error.message, request.id));
-      }
-      if (
-        error instanceof CreatePostError &&
-        (error.code === 'DUPLICATE_SOCIAL_ACCOUNT' ||
-          error.code === 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH')
-      ) {
-        return reply
-          .status(400)
-          .send(err(error.code, 'VALIDATION_ERROR', error.message, request.id));
+      if (error instanceof CreatePostError) {
+        switch (error.code) {
+          case 'SOCIAL_ACCOUNT_NOT_FOUND':
+          case 'MEDIA_ASSET_NOT_FOUND':
+          case 'MISSION_NOT_FOUND':
+            return reply.status(404).send(err(error.code, 'NOT_FOUND', error.message, request.id));
+          case 'UNSAFE_REMOTE_URL':
+          case 'DUPLICATE_SOCIAL_ACCOUNT':
+          case 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH':
+            return reply
+              .status(400)
+              .send(err(error.code, 'VALIDATION_ERROR', error.message, request.id));
+        }
       }
       throw error;
     }
