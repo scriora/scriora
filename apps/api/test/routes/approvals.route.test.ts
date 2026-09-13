@@ -35,6 +35,37 @@ describe('API Routes — Approvals', () => {
     expect(json.error.code).toBe('TOKEN_NOT_FOUND');
   });
 
+  it('GET /v1/approve/:token scopes publication previews to the token workspace', async () => {
+    const workspaceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const publicationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    vi.spyOn(prisma.approvalToken, 'findFirst').mockResolvedValue({
+      id: 'token-row-preview',
+      workspaceId,
+      approvalId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      approval: {
+        resourceType: 'PUBLICATION',
+        resourceId: publicationId,
+        status: 'PENDING',
+      },
+    } as any);
+    const publicationLookup = vi.spyOn(prisma.publication, 'findFirst').mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/approve/tenant-scoped-preview-token',
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.post).toBeNull();
+    expect(publicationLookup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: publicationId, workspaceId },
+      })
+    );
+  });
+
   it('POST /v1/approve/:token/decision APPROVED creates a sweepable PENDING outbox and dispatches immediately', async () => {
     const publicationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const approvalId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
