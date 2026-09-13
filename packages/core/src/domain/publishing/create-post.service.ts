@@ -26,6 +26,7 @@ export class CreatePostError extends Error {
     | 'SOCIAL_ACCOUNT_NOT_FOUND'
     | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
     | 'DUPLICATE_SOCIAL_ACCOUNT'
+    | 'MEDIA_ASSET_NOT_FOUND'
     | 'MISSION_NOT_FOUND'
     | 'UNSAFE_REMOTE_URL';
 
@@ -34,6 +35,7 @@ export class CreatePostError extends Error {
       | 'SOCIAL_ACCOUNT_NOT_FOUND'
       | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
       | 'DUPLICATE_SOCIAL_ACCOUNT'
+      | 'MEDIA_ASSET_NOT_FOUND'
       | 'MISSION_NOT_FOUND'
       | 'UNSAFE_REMOTE_URL',
     message: string
@@ -264,16 +266,38 @@ export async function createUnifiedPost(
   let resolvedMediaUrls: string[] = mediaUrls || [];
   if (media && media.length > 0 && resolvedMediaUrls.length === 0) {
     const assetIds = media.map((m) => m.mediaAssetId);
+    const distinctAssetIds = [...new Set(assetIds)];
     const assets = await db.mediaAsset.findMany({
-      where: { id: { in: assetIds } },
-      select: { storageKey: true },
+      where: {
+        id: { in: distinctAssetIds },
+        workspaceId,
+        deletedAt: null,
+        processingState: 'READY',
+      },
+      select: { id: true, storageKey: true },
     });
-    resolvedMediaUrls = assets
-      .map((a: { storageKey: string | null }) => a.storageKey)
-      .filter((key: string | null): key is string => Boolean(key));
-    if (resolvedMediaUrls.length === 0) {
-      resolvedMediaUrls = assetIds;
+
+    const storageKeyByAssetId = new Map(
+      assets
+        .filter((asset) => asset.storageKey.trim().length > 0)
+        .map((asset) => [asset.id, asset.storageKey] as const)
+    );
+    if (storageKeyByAssetId.size !== distinctAssetIds.length) {
+      throw new CreatePostError(
+        'MEDIA_ASSET_NOT_FOUND',
+        'One or more media assets are unavailable in this workspace'
+      );
     }
+    resolvedMediaUrls = assetIds.map((assetId) => {
+      const storageKey = storageKeyByAssetId.get(assetId);
+      if (!storageKey) {
+        throw new CreatePostError(
+          'MEDIA_ASSET_NOT_FOUND',
+          'One or more media assets are unavailable in this workspace'
+        );
+      }
+      return storageKey;
+    });
   }
 
   try {

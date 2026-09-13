@@ -335,6 +335,65 @@ describe('createUnifiedPost', () => {
     expect(tx.publication.create).toHaveBeenCalledTimes(2);
   });
 
+  it('rejects media assets that are not ready in the active workspace', async () => {
+    const tx = createMockTx();
+    const mediaAssetId = '44444444-4444-4444-8444-444444444444';
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        createdByUserId: userId,
+        requiresApproval: false,
+        body: 'Cross-tenant media must be rejected',
+        targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+        media: [{ mediaAssetId }],
+        idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      })
+    ).rejects.toMatchObject({ code: 'MEDIA_ASSET_NOT_FOUND' });
+
+    expect(db.mediaAsset.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [mediaAssetId] },
+        workspaceId,
+        deletedAt: null,
+        processingState: 'READY',
+      },
+      select: { id: true, storageKey: true },
+    });
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('resolves ready workspace media assets in the requested order', async () => {
+    const tx = createMockTx();
+    const firstAssetId = '44444444-4444-4444-8444-444444444444';
+    const secondAssetId = '55555555-5555-4555-8555-555555555555';
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
+    db.mediaAsset.findMany.mockResolvedValue([
+      { id: secondAssetId, storageKey: 'media/second.png' },
+      { id: firstAssetId, storageKey: 'media/first.png' },
+    ]);
+
+    await createUnifiedPost(db as any, {
+      workspaceId,
+      createdByUserId: userId,
+      requiresApproval: false,
+      body: 'Owned media remains publishable',
+      targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+      media: [{ mediaAssetId: firstAssetId }, { mediaAssetId: secondAssetId }],
+      idempotencyKey: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    });
+
+    const outboxCall = tx.outboxCommand.create.mock.calls.at(0);
+    if (!outboxCall) {
+      throw new Error('Expected an outbox command for ready workspace media');
+    }
+    const payload = outboxCall[0].data.payload as {
+      mediaUrls: string[];
+    };
+    expect(payload.mediaUrls).toEqual(['media/first.png', 'media/second.png']);
+  });
+
   it('rejects SSRF media URLs before persisting publications', async () => {
     const tx = createMockTx();
     const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
