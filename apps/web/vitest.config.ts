@@ -7,7 +7,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     passWithNoTests: true,
-    include: ['test/components/**/*.{test,spec}.{ts,tsx}'],
+    include: ['test/{components,config}/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['test/e2e/**', 'node_modules/**', '.next/**'],
     coverage: {
       provider: 'v8',

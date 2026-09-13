@@ -3,6 +3,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 
 describe('Security & Gateway Robustness Tests', () => {
+  it('sets baseline browser security headers on API responses', async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: 'GET', url: '/health' });
+
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect(res.headers['referrer-policy']).toBe('no-referrer');
+    expect(res.headers['x-dns-prefetch-control']).toBe('off');
+  });
+
   it('enforces JWT_SECRET rules in production and development', () => {
     const originalEnv = process.env.NODE_ENV;
     const originalSecret = process.env.JWT_SECRET;
