@@ -3,7 +3,10 @@ import argon2 from 'argon2';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { prisma } from 'scriora-core';
 import { z } from 'zod';
-import { deliverMagicLink } from '../../../lib/magic-link-mailer.js';
+import {
+  buildMagicLinkVerifyUrl,
+  deliverMagicLink,
+} from '../../../lib/magic-link-mailer.js';
 import { err, ok } from '../../../lib/response.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 
@@ -104,6 +107,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const rawToken = crypto.randomBytes(32).toString('hex');
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
+      const verifyUrl = buildMagicLinkVerifyUrl(rawToken);
 
       const user = await prisma.user.findUnique({ where: { email } });
 
@@ -147,7 +151,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      const verifyUrl = `${process.env.APP_URL ?? 'http://localhost:3000'}/v1/auth/verify?token=${rawToken}`;
       const delivery = await deliverMagicLink({ email, url: verifyUrl, expiresAt });
       const isDev = process.env.NODE_ENV !== 'production';
       return reply.status(200).send(

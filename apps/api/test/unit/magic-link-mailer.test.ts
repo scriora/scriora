@@ -1,10 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { deliverMagicLink } from '../../src/lib/magic-link-mailer.js';
+import {
+  buildMagicLinkVerifyUrl,
+  deliverMagicLink,
+} from '../../src/lib/magic-link-mailer.js';
 
 describe('deliverMagicLink', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.MAGIC_LINK_MAILER_URL;
+  });
+
+  it('builds verification links from the canonical API origin', () => {
+    expect(
+      buildMagicLinkVerifyUrl('raw token', {
+        NODE_ENV: 'production',
+        API_URL: 'https://api.scriora.example/base/',
+      })
+    ).toBe('https://api.scriora.example/v1/auth/verify?token=raw+token');
+  });
+
+  it('requires API_URL in production and uses an explicit development default', () => {
+    expect(() => buildMagicLinkVerifyUrl('abc', { NODE_ENV: 'production' })).toThrow(
+      'API_URL is required in production'
+    );
+    expect(buildMagicLinkVerifyUrl('abc', { NODE_ENV: 'development' })).toBe(
+      'http://localhost:4000/v1/auth/verify?token=abc'
+    );
   });
 
   it('returns note when no mailer hook is configured', async () => {

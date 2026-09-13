@@ -46,7 +46,35 @@ describe('API Routes — Auth', () => {
     expect(body.success).toBe(true);
     expect(body.data.email).toBe('test@scriora.io');
     expect(body.data.devMagicLink).toBeDefined();
+    expect(body.data.devMagicLink).toMatch(
+      /^http:\/\/localhost:4000\/v1\/auth\/verify\?token=/
+    );
     expect(body.data.delivery).toBe('note');
+  });
+
+  it('POST /v1/auth/magic-link fails before persistence when production API_URL is missing', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalApiUrl = process.env.API_URL;
+    process.env.NODE_ENV = 'production';
+    delete process.env.API_URL;
+    const findUser = vi.spyOn(prisma.user, 'findUnique');
+
+    try {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/v1/auth/magic-link',
+        payload: { email: 'test@scriora.io', name: 'Test User' },
+      });
+
+      expect(res.statusCode).toBe(500);
+      expect(JSON.parse(res.body).error.code).toBe('INTERNAL_SERVER_ERROR');
+      expect(findUser).not.toHaveBeenCalled();
+    } finally {
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+      if (originalApiUrl === undefined) delete process.env.API_URL;
+      else process.env.API_URL = originalApiUrl;
+    }
   });
 
   it('POST /v1/auth/register requires a password', async () => {
