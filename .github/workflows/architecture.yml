@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: Validate Prisma Database Schema
         run: pnpm db:validate
       - name: Verify Module Boundaries & Isolation
