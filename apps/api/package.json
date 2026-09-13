@@ -9,6 +9,7 @@
     "build": "tsc",
     "lint": "biome check src/",
     "lint:fix": "biome check --write src/",
+    "openapi:generate": "tsx src/scripts/export-openapi.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

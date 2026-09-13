@@ -33,6 +33,18 @@ describe('API Routes — Telegram webhook secret', () => {
     expect(TelegramBotService.prototype.handleUpdate).not.toHaveBeenCalled();
   });
 
+  it('keeps the route registered but rejects posts when TELEGRAM_BOT_TOKEN is unset', async () => {
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    process.env.TELEGRAM_WEBHOOK_SECRET = 'expected-secret';
+
+    const app = buildApp();
+    const res = await postWebhook(app, { 'x-telegram-bot-api-secret-token': 'expected-secret' });
+
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error.code).toBe('INVALID_WEBHOOK_SECRET');
+    expect(TelegramBotService.prototype.handleUpdate).not.toHaveBeenCalled();
+  });
+
   it('rejects webhook posts when TELEGRAM_WEBHOOK_SECRET is blank', async () => {
     process.env.TELEGRAM_BOT_TOKEN = '123456:ABC';
     process.env.TELEGRAM_WEBHOOK_SECRET = '   ';
