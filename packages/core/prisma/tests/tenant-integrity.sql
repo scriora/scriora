@@ -17,6 +17,24 @@ INSERT INTO "contents" ("id", "workspace_id", "body") VALUES
   ('40000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'Content A'),
   ('40000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'Content B');
 
+INSERT INTO "missions" ("id", "workspace_id", "name") VALUES
+  ('45000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'Mission B');
+
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO "contents" ("workspace_id", "mission_id", "body")
+    VALUES (
+      '20000000-0000-4000-8000-000000000001',
+      '45000000-0000-4000-8000-000000000002',
+      'Cross-tenant mission content'
+    );
+    RAISE EXCEPTION 'content accepted a mission from another workspace';
+  EXCEPTION WHEN foreign_key_violation THEN
+    NULL;
+  END;
+END $$;
+
 INSERT INTO "content_variants" (
   "id", "workspace_id", "content_id", "social_account_id", "body"
 ) VALUES (

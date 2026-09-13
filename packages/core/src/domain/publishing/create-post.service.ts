@@ -26,6 +26,7 @@ export class CreatePostError extends Error {
     | 'SOCIAL_ACCOUNT_NOT_FOUND'
     | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
     | 'DUPLICATE_SOCIAL_ACCOUNT'
+    | 'MISSION_NOT_FOUND'
     | 'UNSAFE_REMOTE_URL';
 
   constructor(
@@ -33,6 +34,7 @@ export class CreatePostError extends Error {
       | 'SOCIAL_ACCOUNT_NOT_FOUND'
       | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
       | 'DUPLICATE_SOCIAL_ACCOUNT'
+      | 'MISSION_NOT_FOUND'
       | 'UNSAFE_REMOTE_URL',
     message: string
   ) {
@@ -70,6 +72,7 @@ export interface CreateUnifiedPostInput {
   media?: MediaRef[];
   mediaUrls?: string[];
   scheduledAt?: string;
+  missionId?: string;
   idempotencyKey: string;
 }
 
@@ -180,6 +183,7 @@ export async function createUnifiedPost(
     media,
     mediaUrls,
     scheduledAt,
+    missionId,
     idempotencyKey,
   } = input;
 
@@ -189,6 +193,19 @@ export async function createUnifiedPost(
       'DUPLICATE_SOCIAL_ACCOUNT',
       'Each social account may be targeted only once per publish request'
     );
+  }
+
+  if (missionId) {
+    const mission = await db.mission.findFirst({
+      where: { id: missionId, workspaceId },
+      select: { id: true },
+    });
+    if (!mission) {
+      throw new CreatePostError(
+        'MISSION_NOT_FOUND',
+        'The selected mission does not exist in this workspace'
+      );
+    }
   }
 
   const existingPublication = await db.publication.findFirst({
@@ -274,6 +291,7 @@ export async function createUnifiedPost(
     const content = await tx.content.create({
       data: {
         workspaceId,
+        missionId: missionId ?? null,
         title: contentTitle,
         body,
         status: 'READY',
