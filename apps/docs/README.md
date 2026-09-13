@@ -1,8 +1,9 @@
 # scriora-docs
 
-Documentation site for Scriora  -  Astro + Starlight.
+Documentation site for Scriora — Astro + Starlight.
 
-## Architecture Specifications
+## Content source
 
-All canonical specs are in `architecture/`.
-Start with `SCRIORA_AGENT_CONTEXT_MAP.md`.
+All published documentation lives in `src/content/docs/`, the directory loaded by
+Starlight's `docsLoader`. Add and update pages there so the repository has one
+canonical documentation tree.
