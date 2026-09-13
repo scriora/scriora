@@ -13,6 +13,31 @@ export type MagicLinkDelivery = {
   expiresAt: Date;
 };
 
+export function buildMagicLinkVerifyUrl(
+  token: string,
+  env: NodeJS.ProcessEnv = process.env
+): string {
+  const configuredOrigin = env.API_URL?.trim();
+  if (!configuredOrigin && env.NODE_ENV === 'production') {
+    throw new Error('API_URL is required in production to generate magic links');
+  }
+
+  const rawOrigin = configuredOrigin || 'http://localhost:4000';
+  let origin: URL;
+  try {
+    origin = new URL(rawOrigin);
+  } catch {
+    throw new Error('API_URL must be a valid absolute URL');
+  }
+  if (origin.protocol !== 'http:' && origin.protocol !== 'https:') {
+    throw new Error('API_URL must use http or https');
+  }
+
+  const verifyUrl = new URL('/v1/auth/verify', origin);
+  verifyUrl.searchParams.set('token', token);
+  return verifyUrl.toString();
+}
+
 export async function deliverMagicLink(delivery: MagicLinkDelivery): Promise<'hook' | 'note'> {
   const hookUrl = process.env.MAGIC_LINK_MAILER_URL?.trim();
   if (!hookUrl) {
