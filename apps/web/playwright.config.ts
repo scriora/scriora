@@ -7,7 +7,8 @@ export default defineConfig({
     timeout: 5000,
   },
   fullyParallel: true,
-  retries: 0,
+  forbidOnly: Boolean(process.env.CI),
+  retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: 'html',
   use: {
@@ -21,9 +22,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'node .next/standalone/server.js',
+    command: 'pnpm start:e2e',
     url: 'http://127.0.0.1:3000/dashboard',
     reuseExistingServer: false,
     timeout: 30 * 1000,
+    env: {
+      HOSTNAME: '127.0.0.1',
+      PORT: '3000',
+    },
   },
 });
