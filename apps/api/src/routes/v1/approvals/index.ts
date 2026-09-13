@@ -68,8 +68,11 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
 
     let publicationDetails = null;
     if (tokenRecord.approval.resourceType === 'PUBLICATION') {
-      const pub = await prisma.publication.findUnique({
-        where: { id: tokenRecord.approval.resourceId },
+      const pub = await prisma.publication.findFirst({
+        where: {
+          id: tokenRecord.approval.resourceId,
+          workspaceId: tokenRecord.workspaceId,
+        },
         include: {
           contentVariant: {
             include: { content: true },
