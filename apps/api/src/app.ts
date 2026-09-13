@@ -1,5 +1,6 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import Fastify, { type FastifyError, type FastifyInstance } from 'fastify';
 import { prisma } from 'scriora-core';
@@ -58,6 +59,7 @@ export function buildApp(): FastifyInstance {
     origin: allowedOrigins,
     credentials: true,
   });
+  app.register(helmet, isProd ? {} : { contentSecurityPolicy: false });
   app.register(cookie);
   app.register(jwt, {
     secret: jwtSecret,
