@@ -22,9 +22,20 @@ const APPROVAL_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
 const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export class CreatePostError extends Error {
-  readonly code: 'SOCIAL_ACCOUNT_NOT_FOUND' | 'UNSAFE_REMOTE_URL';
+  readonly code:
+    | 'SOCIAL_ACCOUNT_NOT_FOUND'
+    | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
+    | 'DUPLICATE_SOCIAL_ACCOUNT'
+    | 'UNSAFE_REMOTE_URL';
 
-  constructor(code: 'SOCIAL_ACCOUNT_NOT_FOUND' | 'UNSAFE_REMOTE_URL', message: string) {
+  constructor(
+    code:
+      | 'SOCIAL_ACCOUNT_NOT_FOUND'
+      | 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH'
+      | 'DUPLICATE_SOCIAL_ACCOUNT'
+      | 'UNSAFE_REMOTE_URL',
+    message: string
+  ) {
     super(message);
     this.name = 'CreatePostError';
     this.code = code;
@@ -172,6 +183,14 @@ export async function createUnifiedPost(
     idempotencyKey,
   } = input;
 
+  const accountIds = targets.map((target) => target.socialAccountId);
+  if (new Set(accountIds).size !== accountIds.length) {
+    throw new CreatePostError(
+      'DUPLICATE_SOCIAL_ACCOUNT',
+      'Each social account may be targeted only once per publish request'
+    );
+  }
+
   const existingPublication = await db.publication.findFirst({
     where: {
       workspaceId,
@@ -193,15 +212,28 @@ export async function createUnifiedPost(
     };
   }
 
-  const accountIds = targets.map((t) => t.socialAccountId);
   const validAccounts = await db.socialAccount.findMany({
     where: { id: { in: accountIds }, workspaceId },
+    select: { id: true, platform: true },
   });
 
   if (validAccounts.length !== targets.length) {
     throw new CreatePostError(
       'SOCIAL_ACCOUNT_NOT_FOUND',
       'One or more targeted social accounts do not exist in this workspace'
+    );
+  }
+
+  const platformByAccountId = new Map(
+    validAccounts.map((account) => [account.id, account.platform] as const)
+  );
+  const mismatchedTarget = targets.find(
+    (target) => platformByAccountId.get(target.socialAccountId) !== target.platform
+  );
+  if (mismatchedTarget) {
+    throw new CreatePostError(
+      'SOCIAL_ACCOUNT_PLATFORM_MISMATCH',
+      `Target platform does not match social account ${mismatchedTarget.socialAccountId}`
     );
   }
 

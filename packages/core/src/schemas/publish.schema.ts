@@ -272,6 +272,24 @@ export const PublishTargetSchema = z.object({
   platformOptions: PlatformOptionsSchema.optional(),
 });
 
+const PublishTargetsSchema = z
+  .array(PublishTargetSchema)
+  .min(1, 'At least one publish target is required')
+  .max(10, 'Cannot publish to more than 10 targets in a single request')
+  .superRefine((targets, context) => {
+    const seenAccountIds = new Set<string>();
+    targets.forEach((target, index) => {
+      if (seenAccountIds.has(target.socialAccountId)) {
+        context.addIssue({
+          code: 'custom',
+          path: [index, 'socialAccountId'],
+          message: 'Each social account may be targeted only once',
+        });
+      }
+      seenAccountIds.add(target.socialAccountId);
+    });
+  });
+
 // ── Primary Publish Payload ────────────────────────────────────────────────────
 
 export const PublishPayloadSchema = z.object({
@@ -282,10 +300,7 @@ export const PublishPayloadSchema = z.object({
     .max(10000, 'Post body too long — use contentVariantId for platform-specific overrides'),
 
   /** Target platforms and accounts — must contain at least 1 */
-  targets: z
-    .array(PublishTargetSchema)
-    .min(1, 'At least one publish target is required')
-    .max(10, 'Cannot publish to more than 10 targets in a single request'),
+  targets: PublishTargetsSchema,
 
   /** Optional media attachments */
   media: z.array(MediaRefSchema).max(10).optional(),

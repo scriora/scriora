@@ -5,6 +5,7 @@ import {
   createUnifiedPost,
   deriveCreatePostStatus,
 } from '../../src/domain/publishing/create-post.service.js';
+import { PublishPayloadSchema } from '../../src/schemas/publish.schema.js';
 
 interface TxDataArgs {
   data: Record<string, unknown>;
@@ -38,7 +39,10 @@ function createMockTx() {
   };
 }
 
-function createMockDb(tx: ReturnType<typeof createMockTx>, accounts: Array<{ id: string }>) {
+function createMockDb(
+  tx: ReturnType<typeof createMockTx>,
+  accounts: Array<{ id: string; platform: string }>
+) {
   return {
     publication: {
       findFirst: vi.fn().mockResolvedValue(null),
@@ -55,12 +59,13 @@ function createMockDb(tx: ReturnType<typeof createMockTx>, accounts: Array<{ id:
 
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const accountId = '22222222-2222-4222-8222-222222222222';
+const secondAccountId = '44444444-4444-4444-8444-444444444444';
 const userId = '33333333-3333-4333-8333-333333333333';
 
 describe('createUnifiedPost', () => {
   it('creates publications and a sweepable outbox when approval is not required', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
 
     const result = await createUnifiedPost(db as any, {
       workspaceId,
@@ -90,7 +95,7 @@ describe('createUnifiedPost', () => {
 
   it('holds publications at REQUIRES_APPROVAL and does not create an outbox', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'X' }]);
 
     const result = await createUnifiedPost(db as any, {
       workspaceId,
@@ -121,7 +126,7 @@ describe('createUnifiedPost', () => {
 
   it('does not create an outbox for scheduled + requiresApproval', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
     const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const result = await createUnifiedPost(db as any, {
@@ -178,7 +183,7 @@ describe('createUnifiedPost', () => {
 
   it('does not treat a prefix of another idempotency key as a replay', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
     const prefix = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
     await createUnifiedPost(db as any, {
@@ -216,9 +221,75 @@ describe('createUnifiedPost', () => {
     expect(db.$transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects duplicate social-account targets before persistence', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        requiresApproval: false,
+        body: 'Duplicate target',
+        targets: [
+          { socialAccountId: accountId, platform: 'LINKEDIN' },
+          { socialAccountId: accountId, platform: 'LINKEDIN' },
+        ],
+        idempotencyKey: '99999999-9999-4999-8999-999999999999',
+      })
+    ).rejects.toMatchObject({ code: 'DUPLICATE_SOCIAL_ACCOUNT' });
+
+    expect(db.socialAccount.findMany).not.toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a target whose requested platform differs from its stored account', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [{ id: accountId, platform: 'X' }]);
+
+    await expect(
+      createUnifiedPost(db as any, {
+        workspaceId,
+        requiresApproval: false,
+        body: 'Mismatched target',
+        targets: [{ socialAccountId: accountId, platform: 'LINKEDIN' }],
+        idempotencyKey: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      })
+    ).rejects.toMatchObject({ code: 'SOCIAL_ACCOUNT_PLATFORM_MISMATCH' });
+
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('creates a valid request targeting accounts on different platforms', async () => {
+    const tx = createMockTx();
+    const db = createMockDb(tx, [
+      { id: accountId, platform: 'LINKEDIN' },
+      { id: secondAccountId, platform: 'X' },
+    ]);
+
+    const result = await createUnifiedPost(db as any, {
+      workspaceId,
+      requiresApproval: false,
+      body: 'Valid multi-platform post',
+      targets: [
+        { socialAccountId: accountId, platform: 'LINKEDIN' },
+        { socialAccountId: secondAccountId, platform: 'X' },
+      ],
+      idempotencyKey: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    });
+
+    expect(result.kind).toBe('created');
+    if (result.kind === 'created') {
+      expect(result.publications.map((publication) => publication.platform)).toEqual([
+        'LINKEDIN',
+        'X',
+      ]);
+    }
+    expect(tx.publication.create).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects SSRF media URLs before persisting publications', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'LINKEDIN' }]);
 
     await expect(
       createUnifiedPost(db as any, {
@@ -237,7 +308,7 @@ describe('createUnifiedPost', () => {
 
   it('rejects unsafe platform option URLs', async () => {
     const tx = createMockTx();
-    const db = createMockDb(tx, [{ id: accountId }]);
+    const db = createMockDb(tx, [{ id: accountId, platform: 'YOUTUBE' }]);
 
     await expect(
       createUnifiedPost(db as any, {
@@ -260,6 +331,20 @@ describe('createUnifiedPost', () => {
     ).rejects.toMatchObject({ code: 'UNSAFE_REMOTE_URL' });
 
     expect(db.$transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe('PublishPayloadSchema target invariants', () => {
+  it('rejects duplicate socialAccountId values', () => {
+    const parsed = PublishPayloadSchema.safeParse({
+      body: 'Duplicate schema target',
+      targets: [
+        { socialAccountId: accountId, platform: 'LINKEDIN' },
+        { socialAccountId: accountId, platform: 'LINKEDIN' },
+      ],
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });
 
