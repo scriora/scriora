@@ -15,7 +15,10 @@ import {
   type PublishTarget,
 } from 'scriora-core';
 import { maybeSendTelegramApprovalRequests } from './approval-delivery.js';
-import { applyApprovalDecisionToPublication } from './approval-publication-decision.js';
+import {
+  ApprovalDecisionConflictError,
+  applyApprovalTokenDecision,
+} from './approval-token-decision.js';
 import type { PublicationRequestedSender } from './publication-requested.js';
 import { maybeDispatchPublicationRequested } from './publication-requested.js';
 
@@ -171,33 +174,22 @@ export async function handleTelegramC2ApprovalDecision(
     return false;
   }
 
-  const outcome = await db.$transaction(async (tx) => {
-    await tx.approvalToken.update({
-      where: { id: tokenRecord.id },
-      data: { usedAt: new Date() },
-    });
-
-    await tx.approval.update({
-      where: { id: tokenRecord.approval.id },
-      data: {
-        status: decision,
-        decidedAt: new Date(),
-        decisionNote: 'Decided via Telegram Admin C2 by authorized owner',
-      },
-    });
-
-    if (tokenRecord.approval.resourceType !== 'PUBLICATION') {
-      return {
-        applied: true,
-        publicationStatus: null,
-        queued: { outboxCommandId: null, availableAt: null, status: null, created: false },
-      };
+  let outcome: Awaited<ReturnType<typeof applyApprovalTokenDecision>>;
+  try {
+    outcome = await applyApprovalTokenDecision(
+      db,
+      tokenRecord,
+      decision,
+      'Decided via Telegram Admin C2 by authorized owner'
+    );
+  } catch (error: unknown) {
+    if (error instanceof ApprovalDecisionConflictError) {
+      return false;
     }
+    throw error;
+  }
 
-    return applyApprovalDecisionToPublication(tx, tokenRecord.approval.resourceId, decision);
-  });
-
-  if (decision === 'APPROVED' && outcome.applied) {
+  if (decision === 'APPROVED') {
     const dispatch = deps.dispatchPublicationRequested ?? maybeDispatchPublicationRequested;
     await dispatch(outcome.queued, {
       ...(deps.sendPublicationRequested ? { send: deps.sendPublicationRequested } : {}),

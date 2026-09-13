@@ -55,8 +55,8 @@ describe('API Routes — Approvals', () => {
     } as any);
 
     const mockTx = {
-      approvalToken: { update: vi.fn().mockResolvedValue({}) },
-      approval: { update: vi.fn().mockResolvedValue({}) },
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      approval: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       publication: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({
@@ -153,8 +153,8 @@ describe('API Routes — Approvals', () => {
     } as any);
 
     const mockTx = {
-      approvalToken: { update: vi.fn().mockResolvedValue({}) },
-      approval: { update: vi.fn().mockResolvedValue({}) },
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      approval: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       publication: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn().mockResolvedValue({
@@ -226,8 +226,8 @@ describe('API Routes — Approvals', () => {
     } as any);
 
     const mockTx = {
-      approvalToken: { update: vi.fn().mockResolvedValue({}) },
-      approval: { update: vi.fn().mockResolvedValue({}) },
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      approval: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       publication: {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         findUnique: vi.fn(),
@@ -278,8 +278,8 @@ describe('API Routes — Approvals', () => {
     } as any);
 
     const mockTx = {
-      approvalToken: { update: vi.fn().mockResolvedValue({}) },
-      approval: { update: vi.fn().mockResolvedValue({}) },
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      approval: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       publication: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         findUnique: vi.fn().mockResolvedValue({ status: 'PUBLISHED' }),
@@ -332,8 +332,8 @@ describe('API Routes — Approvals', () => {
     } as any);
 
     const mockTx = {
-      approvalToken: { update: vi.fn().mockResolvedValue({}) },
-      approval: { update: vi.fn().mockResolvedValue({}) },
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      approval: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       publication: {
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
         findUnique: vi.fn().mockResolvedValue({ status: 'PUBLISHED' }),
@@ -360,5 +360,41 @@ describe('API Routes — Approvals', () => {
       data: { status: 'CANCELLED' },
     });
     expect(mockTx.outboxCommand.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without mutating approval when another request consumes the token first', async () => {
+    vi.spyOn(prisma.approvalToken, 'findFirst').mockResolvedValue({
+      id: 'token-row-race',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      tokenHash: 'hash',
+      usedAt: null,
+      expiresAt: new Date(Date.now() + 60_000),
+      approval: {
+        id: 'approval-race',
+        resourceType: 'PUBLICATION',
+        resourceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        status: 'PENDING',
+      },
+    } as any);
+
+    const approvalUpdate = vi.fn();
+    const mockTx = {
+      approvalToken: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      approval: { updateMany: approvalUpdate },
+      publication: { updateMany: vi.fn(), findUnique: vi.fn() },
+      outboxCommand: { findFirst: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
+    };
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (cb: any) => cb(mockTx));
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/approve/racing-token/decision',
+      payload: { decision: 'APPROVED' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(JSON.parse(res.body).error.code).toBe('TOKEN_ALREADY_USED');
+    expect(approvalUpdate).not.toHaveBeenCalled();
+    expect(mockTx.publication.updateMany).not.toHaveBeenCalled();
   });
 });

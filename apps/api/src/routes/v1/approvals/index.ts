@@ -2,10 +2,12 @@ import crypto from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { ApprovalDecisionSchema, prisma } from 'scriora-core';
 import { z } from 'zod';
-import { applyApprovalDecisionToPublication } from '../../../lib/approval-publication-decision.js';
+import {
+  ApprovalDecisionConflictError,
+  applyApprovalTokenDecision,
+} from '../../../lib/approval-token-decision.js';
 import { maybeDispatchPublicationRequested } from '../../../lib/publication-requested.js';
 import { err, ok } from '../../../lib/response.js';
-import type { EnqueuedApprovedOutbox } from '../../../lib/social-publish-outbox.js';
 import { verifyAuth } from '../../../middleware/auth.js';
 import { verifyWorkspace } from '../../../middleware/workspace.js';
 
@@ -155,47 +157,32 @@ export const approvalRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const approval = tokenRecord.approval;
-
-    const outcome: {
-      applied: boolean;
-      publicationStatus: string | null;
-      queued: EnqueuedApprovedOutbox;
-    } = await prisma.$transaction(async (tx) => {
-      // Mark token consumed
-      await tx.approvalToken.update({
-        where: { id: tokenRecord.id },
-        data: { usedAt: new Date() },
-      });
-
-      // Update Approval
-      await tx.approval.update({
-        where: { id: approval.id },
-        data: {
-          status: decision === 'APPROVED' ? 'APPROVED' : 'REJECTED',
-          decidedAt: new Date(),
-          decisionNote: feedback || null,
-        },
-      });
-
-      if (approval.resourceType !== 'PUBLICATION') {
-        return {
-          applied: true,
-          publicationStatus: null,
-          queued: { outboxCommandId: null, availableAt: null, status: null, created: false },
-        };
+    let outcome: Awaited<ReturnType<typeof applyApprovalTokenDecision>>;
+    try {
+      outcome = await applyApprovalTokenDecision(prisma, tokenRecord, decision, feedback || null);
+    } catch (error: unknown) {
+      if (!(error instanceof ApprovalDecisionConflictError)) {
+        throw error;
       }
-
-      return applyApprovalDecisionToPublication(tx, approval.resourceId, decision);
-    });
-
-    if (!outcome.applied) {
+      if (error.code !== 'PUBLICATION_STATUS_CONFLICT') {
+        return reply
+          .status(409)
+          .send(
+            err(
+              'TOKEN_ALREADY_USED',
+              'CONFLICT',
+              'This decision has already been recorded',
+              request.id
+            )
+          );
+      }
       return reply
         .status(409)
         .send(
           err(
             'PUBLICATION_STATUS_CONFLICT',
             'CONFLICT',
-            `Publication is ${outcome.publicationStatus ?? 'missing'}; approval was recorded without changing publication status`,
+            `Publication is ${error.publicationStatus ?? 'missing'}; approval decision was not recorded`,
             request.id
           )
         );
