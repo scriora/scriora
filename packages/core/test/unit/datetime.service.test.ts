@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DateTimeService, defaultDateTimeService } from '../../src/domain/time/datetime.service.js';
+import { DateTimeService } from '../../src/domain/time/datetime.service.js';
 
 describe('DateTimeService', () => {
   const service = new DateTimeService('Africa/Cairo', 'ar');
