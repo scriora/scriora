@@ -732,7 +732,7 @@ model Goal {
   updatedAt     DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission   Mission   @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission   Mission   @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Cascade)
 
   @@index([missionId])
   @@index([workspaceId, status])
@@ -755,9 +755,10 @@ model Strategy {
   updatedAt      DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace  Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission    Mission            @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  mission    Mission            @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Cascade)
   hypotheses GrowthHypothesis[]
 
+  @@unique([workspaceId, id], map: "strategies_workspace_id_id_key")
   @@unique([missionId, version], name: "uq_strategies_version")
   @@index([missionId, version(sort: Desc)])
   @@index([workspaceId, status])
@@ -780,10 +781,11 @@ model GrowthHypothesis {
   updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission     Mission      @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  strategy    Strategy     @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  mission     Mission      @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Cascade)
+  strategy    Strategy     @relation(fields: [workspaceId, strategyId], references: [workspaceId, id], onDelete: Cascade)
   experiments Experiment[]
 
+  @@unique([workspaceId, id], map: "growth_hypotheses_workspace_id_id_key")
   @@unique([missionId, key], name: "uq_hypotheses_key")
   @@index([missionId, status])
   @@index([strategyId])
@@ -805,12 +807,13 @@ model Experiment {
   updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace       Workspace                  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission         Mission                    @relation(fields: [missionId], references: [id], onDelete: Cascade)
-  hypothesis      GrowthHypothesis           @relation(fields: [hypothesisId], references: [id], onDelete: Restrict)
+  mission         Mission                    @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Cascade)
+  hypothesis      GrowthHypothesis           @relation(fields: [workspaceId, hypothesisId], references: [workspaceId, id], onDelete: Restrict)
   contentVariants ExperimentContentVariant[]
   evidenceRecords EvidenceRecord[]
   insights        Insight[]
 
+  @@unique([workspaceId, id], map: "experiments_workspace_id_id_key")
   @@index([missionId, status])
   @@index([hypothesisId])
   @@index([startedAt(sort: Desc)])
@@ -825,8 +828,8 @@ model ExperimentContentVariant {
   cohortTag        String?     @map("cohort_tag") @db.VarChar(50)
   assignedAt       DateTime    @default(now()) @map("assigned_at") @db.Timestamptz(6)
 
-  experiment     Experiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
-  contentVariant ContentVariant @relation(fields: [contentVariantId], references: [id], onDelete: Restrict)
+  experiment     Experiment     @relation(fields: [workspaceId, experimentId], references: [workspaceId, id], onDelete: Cascade)
+  contentVariant ContentVariant @relation(fields: [workspaceId, contentVariantId], references: [workspaceId, id], onDelete: Restrict)
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@id([experimentId, contentVariantId])
@@ -849,11 +852,12 @@ model AnalyticsSnapshot {
   createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  socialAccount   SocialAccount?    @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
-  publication     Publication?      @relation(fields: [publicationId], references: [id], onDelete: SetNull)
+  socialAccount   SocialAccount?    @relation(fields: [workspaceId, socialAccountId], references: [workspaceId, id], onDelete: Restrict)
+  publication     Publication?      @relation(fields: [workspaceId, publicationId], references: [workspaceId, id], onDelete: Restrict)
   metrics         AnalyticsMetric[]
   evidenceRecords EvidenceRecord[]
 
+  @@unique([workspaceId, id], map: "analytics_snapshots_workspace_id_id_key")
   @@unique([publicationId, observationWindow], name: "uq_snapshots_window")
   @@index([workspaceId, capturedAt(sort: Desc)])
   @@index([publicationId, capturedAt(sort: Desc)])
@@ -891,10 +895,10 @@ model EvidenceRecord {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   workspace      Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission        Mission?           @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  experiment     Experiment?        @relation(fields: [experimentId], references: [id], onDelete: SetNull)
-  publication    Publication?       @relation(fields: [publicationId], references: [id], onDelete: SetNull)
-  metricSnapshot AnalyticsSnapshot? @relation(fields: [metricSnapshotId], references: [id], onDelete: SetNull)
+  mission        Mission?           @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
+  experiment     Experiment?        @relation(fields: [workspaceId, experimentId], references: [workspaceId, id], onDelete: Restrict)
+  publication    Publication?       @relation(fields: [workspaceId, publicationId], references: [workspaceId, id], onDelete: Restrict)
+  metricSnapshot AnalyticsSnapshot? @relation(fields: [workspaceId, metricSnapshotId], references: [workspaceId, id], onDelete: Restrict)
 
   @@index([workspaceId, capturedAt(sort: Desc)])
   @@index([experimentId, capturedAt(sort: Desc)])
@@ -917,10 +921,11 @@ model Insight {
   updatedAt       DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace  Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission    Mission?    @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  experiment Experiment? @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  mission    Mission?    @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
+  experiment Experiment? @relation(fields: [workspaceId, experimentId], references: [workspaceId, id], onDelete: Restrict)
   decisions  Decision[]
 
+  @@unique([workspaceId, id], map: "insights_workspace_id_id_key")
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([missionId, createdAt(sort: Desc)])
   @@map("insights")
@@ -942,9 +947,9 @@ model Decision {
   executedAt       DateTime?      @map("executed_at") @db.Timestamptz(6)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission   Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  insight   Insight?  @relation(fields: [insightId], references: [id], onDelete: SetNull)
-  approval  Approval? @relation(fields: [approvalId], references: [id], onDelete: SetNull)
+  mission   Mission?  @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
+  insight   Insight?  @relation(fields: [workspaceId, insightId], references: [workspaceId, id], onDelete: Restrict)
+  approval  Approval? @relation(fields: [workspaceId, approvalId], references: [workspaceId, id], onDelete: Restrict)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([missionId, createdAt(sort: Desc)])
@@ -972,7 +977,7 @@ model Memory {
   updatedAt   DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission   Mission?  @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  mission   Mission?  @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
 
   @@index([workspaceId, tier])
   @@index([workspaceId, category])
@@ -999,7 +1004,7 @@ model AgentTask {
   updatedAt    DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  mission         Mission?         @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  mission         Mission?         @relation(fields: [workspaceId, missionId], references: [workspaceId, id], onDelete: Restrict)
   skillExecutions SkillExecution[]
 
   @@index([workspaceId, status])

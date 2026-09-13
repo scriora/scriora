@@ -207,4 +207,63 @@ BEGIN
   END;
 END $$;
 
+DO $$
+BEGIN
+  BEGIN
+    INSERT INTO "goals" (
+      "workspace_id", "mission_id", "name", "metric_key", "target_value", "ends_at"
+    ) VALUES (
+      '20000000-0000-4000-8000-000000000001',
+      '45000000-0000-4000-8000-000000000002',
+      'Cross-tenant goal',
+      'followers',
+      100,
+      now() + interval '30 days'
+    );
+    RAISE EXCEPTION 'goal accepted a mission from another workspace';
+  EXCEPTION WHEN foreign_key_violation THEN
+    NULL;
+  END;
+END $$;
+
+DO $$
+DECLARE
+  missing_constraints text;
+BEGIN
+  SELECT string_agg(expected.name, ', ' ORDER BY expected.name)
+  INTO missing_constraints
+  FROM (
+    VALUES
+      ('goals_workspace_id_mission_id_fkey'),
+      ('strategies_workspace_id_mission_id_fkey'),
+      ('growth_hypotheses_workspace_id_mission_id_fkey'),
+      ('growth_hypotheses_workspace_id_strategy_id_fkey'),
+      ('experiments_workspace_id_mission_id_fkey'),
+      ('experiments_workspace_id_hypothesis_id_fkey'),
+      ('experiment_content_variants_workspace_id_experiment_id_fkey'),
+      ('experiment_content_variants_workspace_id_content_variant_i_fkey'),
+      ('analytics_snapshots_workspace_id_social_account_id_fkey'),
+      ('analytics_snapshots_workspace_id_publication_id_fkey'),
+      ('evidence_records_workspace_id_mission_id_fkey'),
+      ('evidence_records_workspace_id_experiment_id_fkey'),
+      ('evidence_records_workspace_id_publication_id_fkey'),
+      ('evidence_records_workspace_id_metric_snapshot_id_fkey'),
+      ('insights_workspace_id_mission_id_fkey'),
+      ('insights_workspace_id_experiment_id_fkey'),
+      ('decisions_workspace_id_mission_id_fkey'),
+      ('decisions_workspace_id_insight_id_fkey'),
+      ('decisions_workspace_id_approval_id_fkey'),
+      ('memories_workspace_id_mission_id_fkey'),
+      ('agent_tasks_workspace_id_mission_id_fkey')
+  ) AS expected(name)
+  LEFT JOIN pg_constraint actual
+    ON actual.conname = expected.name
+   AND actual.contype = 'f'
+  WHERE actual.oid IS NULL;
+
+  IF missing_constraints IS NOT NULL THEN
+    RAISE EXCEPTION 'missing tenant integrity constraints: %', missing_constraints;
+  END IF;
+END $$;
+
 ROLLBACK;
